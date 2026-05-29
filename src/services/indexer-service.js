@@ -63,7 +63,7 @@ for (const [name, entry] of Object.entries(walletsFile.networks)) {
   }
 }
 
-export const INDEXER_TOKENS = Object.freeze(['usdt', 'usat', 'xaut', 'btc'])
+export const INDEXER_TOKENS = ['usdt', 'usat', 'xaut', 'btc']
 
 /**
  * Looks up the indexer entry for a network.

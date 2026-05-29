@@ -15,7 +15,7 @@
 import { walletsFile } from './wdk-config.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
-const SUPPORTED_MODULES = Object.freeze(['moonpay'])
+const SUPPORTED_MODULES = ['moonpay']
 
 /**
  * @typedef {Object} ResolvedAsset

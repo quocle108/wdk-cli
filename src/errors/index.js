@@ -44,7 +44,7 @@ import chalk from 'chalk'
  * )} ErrorCodeType
  */
 
-export const ErrorCode = Object.freeze({
+export const ErrorCode = {
   KEY_NOT_FOUND: 'KEY_NOT_FOUND',
   INVALID_SEED_PHRASE: 'INVALID_SEED_PHRASE',
   WRONG_PASSPHRASE: 'WRONG_PASSPHRASE',
@@ -70,7 +70,7 @@ export const ErrorCode = Object.freeze({
   QUOTE_REJECTED: 'QUOTE_REJECTED',
   UNKNOWN_ERROR: 'UNKNOWN_ERROR',
   UNEXPECTED_ERROR: 'UNEXPECTED_ERROR'
-})
+}
 
 const NETWORK_ERROR_PATTERNS = [
   // Node syscall codes
