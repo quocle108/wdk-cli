@@ -34,6 +34,9 @@ import { WalletKeyring } from '../security/keyring.js'
 /** @typedef {import('./protocol.js').GetBalanceResult} GetBalanceResult */
 /** @typedef {import('./protocol.js').EstimateFeeResult} EstimateFeeResult */
 /** @typedef {import('./protocol.js').SendResult} SendResult */
+/** @typedef {import('./protocol.js').SignMessageResult} SignMessageResult */
+/** @typedef {import('./protocol.js').VerifyMessageResult} VerifyMessageResult */
+/** @typedef {import('./protocol.js').GetTransactionResult} GetTransactionResult */
 /** @typedef {import('./protocol.js').WalletStatus} WalletStatus */
 /** @typedef {import('./protocol.js').ListWalletsResult} ListWalletsResult */
 /** @typedef {import('./protocol.js').StatusResult} StatusResult */
@@ -323,6 +326,74 @@ export class DaemonClient {
     this.#assertOk(resp, `Failed to call ${method}`)
     const data = /** @type {{ result: unknown }} */ (resp.data)
     return data.result
+  }
+
+  /**
+   * Signs an arbitrary message with the account's private key via the daemon.
+   *
+   * @param {string} network - The network name.
+   * @param {string} message - The message to sign.
+   * @param {number} [index] - The BIP-44 account index (default: 0).
+   * @param {string} [wallet] - The wallet name.
+   * @returns {Promise<SignMessageResult>} The signing address and signature.
+   */
+  async signMessage (network, message, index = 0, wallet) {
+    const resp = await this.request(
+      { action: 'sign_message', network, message, index, wallet },
+      30000
+    )
+    this.#assertOk(resp, 'Failed to sign message')
+    return /** @type {SignMessageResult} */ (resp.data)
+  }
+
+  /**
+   * Verifies a message signature against the account's key via the daemon.
+   *
+   * @param {string} network - The network name.
+   * @param {string} message - The signed message.
+   * @param {string} signature - The signature to check.
+   * @param {number} [index] - The BIP-44 account index (default: 0).
+   * @param {string} [wallet] - The wallet name.
+   * @returns {Promise<boolean>} True when the signature is valid.
+   */
+  async verifyMessage (network, message, signature, index = 0, wallet) {
+    const resp = await this.request(
+      { action: 'verify_message', network, message, signature, index, wallet },
+      30000
+    )
+    this.#assertOk(resp, 'Failed to verify message')
+    const data = /** @type {VerifyMessageResult} */ (resp.data)
+    return data.valid
+  }
+
+  /**
+   * @typedef {Object} GetTransactionOptions
+   * @property {'confirmed' | 'final'} [finality] - Block until this finality target is reached; omit to fetch the current state.
+   * @property {number} [timeout] - Wait time budget in milliseconds (module default when omitted).
+   * @property {number} [index] - The BIP-44 account index (default: 0).
+   */
+
+  /**
+   * Fetches a transaction's normalized receipt via the daemon, optionally
+   * blocking until it reaches a finality target.
+   *
+   * @param {string} network - The network name.
+   * @param {string} hash - The transaction hash.
+   * @param {GetTransactionOptions} [options] - Finality wait options.
+   * @param {string} [wallet] - The wallet name.
+   * @returns {Promise<unknown>} The normalized receipt (BigInt values serialized as strings).
+   */
+  async getTransaction (network, hash, options = {}, wallet) {
+    const { finality, timeout, index = 0 } = options
+    // A finality wait can run long; keep the IPC timeout above the poll budget.
+    const ipcTimeout = finality ? (timeout ?? 150000) + 30000 : 30000
+    const resp = await this.request(
+      { action: 'get_transaction', network, hash, finality, timeout, index, wallet },
+      ipcTimeout
+    )
+    this.#assertOk(resp, 'Failed to get transaction')
+    const data = /** @type {GetTransactionResult} */ (resp.data)
+    return data.transaction
   }
 
   /**

@@ -16,15 +16,17 @@ import chalk from 'chalk'
 import ora from 'ora'
 import { resolveIndex } from '../services/config-service.js'
 import { WdkCliError, ErrorCode, handleError } from '../errors/index.js'
-import { formatNetworkLabel, formatAddress, formatTxHash } from '../ui/formatters.js'
+import { formatNetworkLabel, formatAddress, formatTxHash, formatAmount } from '../ui/formatters.js'
 import { INDEXER_TOKENS } from '../services/indexer-service.js'
 import { resolveTokenIdentifier } from '../services/token-service.js'
+import { getNetworkConfig } from '../config/networks.js'
 import { createTable } from '../ui/tables.js'
 import { configureHelp } from '../ui/help.js'
-import { positiveInt, nonNegativeInt } from '../ui/parsers.js'
+import { positiveInt, nonNegativeInt, finalityTarget } from '../ui/parsers.js'
 import { getBalance, getAllBalances } from '../actions/balance.js'
 import { getAddress, getAllAddresses } from '../actions/address.js'
 import { getHistory } from '../actions/history.js'
+import { getTransaction } from '../actions/transaction.js'
 
 /** @typedef {import('commander').Command} Command */
 
@@ -351,6 +353,89 @@ export function registerGetCommand (program) {
 
       console.log(table.toString())
       console.log(chalk.dim(`\n  ${result.count} transfer(s)`))
+      console.log()
+    } catch (error) {
+      handleError(error, program.opts().verbose, program.opts().json)
+    }
+  })
+
+  const transaction = get
+    .command('transaction')
+    .description('Get a transaction\'s normalized receipt by hash (optionally wait for finality)')
+    .requiredOption('--network <network>', 'Blockchain network')
+    .requiredOption('--hash <hash>', 'Transaction hash')
+    .option('--finality <target>', 'Block until the transaction is confirmed or final', finalityTarget)
+    .option('--timeout <ms>', 'Max wait in milliseconds (requires --finality)', positiveInt)
+    .option('--wallet <name>', 'Wallet name')
+    .option('--index <n>', 'Account index', nonNegativeInt)
+
+  configureHelp(transaction, {
+    params: [
+      { flags: '--network <network>', description: 'Blockchain network', required: true },
+      { flags: '--hash <hash>', description: 'Transaction hash', required: true },
+      {
+        flags: '--finality <target>',
+        description: 'Block until the transaction is confirmed or final'
+      },
+      { flags: '--timeout <ms>', description: 'Max wait in milliseconds (requires --finality)' }
+    ],
+    options: [
+      { flags: '--wallet <name>', description: 'Wallet name (default: default wallet)' },
+      { flags: '--index <n>', description: 'Account index (default: 0)' }
+    ]
+  })
+
+  transaction.action(async (options) => {
+    try {
+      const network = options.network
+      const index = resolveIndex(options.index)
+
+      const spinnerText = options.finality
+        ? `Waiting for ${options.finality} transaction...`
+        : 'Fetching transaction...'
+      const spinner = program.opts().json ? null : ora(spinnerText).start()
+      let result
+      try {
+        result = await getTransaction({
+          network,
+          hash: options.hash,
+          finality: options.finality,
+          timeout: options.timeout,
+          index,
+          wallet: options.wallet
+        })
+        spinner?.stop()
+      } catch (error) {
+        spinner?.fail()
+        throw error
+      }
+
+      if (program.opts().json) {
+        console.log(JSON.stringify(result))
+        return
+      }
+
+      const tx = /** @type {{ finality?: string, success?: boolean, block?: number, fee?: string }} */ (
+        result.transaction
+      )
+      console.log()
+      console.log(`  Network:  ${formatNetworkLabel(result.network)}`)
+      console.log(`  Hash:     ${formatTxHash(result.hash, false)}`)
+      console.log(`  Finality: ${tx.finality}`)
+      if (tx.success !== undefined) {
+        console.log(`  Success:  ${tx.success ? chalk.green('yes') : chalk.red('no')}`)
+      }
+      if (tx.block !== undefined) {
+        console.log(`  Block:    ${tx.block}`)
+      }
+      if (tx.fee !== undefined) {
+        const networkConfig = getNetworkConfig(result.network)
+        console.log(
+          `  Fee:      ${formatAmount(BigInt(tx.fee), networkConfig.decimals, networkConfig.nativeSymbol)}`
+        )
+      }
+      console.log()
+      console.log(chalk.dim('  Use --json for the full receipt.'))
       console.log()
     } catch (error) {
       handleError(error, program.opts().verbose, program.opts().json)

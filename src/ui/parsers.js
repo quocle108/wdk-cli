@@ -46,6 +46,19 @@ export function nonNegativeInt (value) {
 }
 
 /**
+ * Commander argParser for a transaction finality target.
+ *
+ * @param {string} value - The raw CLI argument.
+ * @returns {'confirmed' | 'final'} The validated target.
+ */
+export function finalityTarget (value) {
+  if (value !== 'confirmed' && value !== 'final') {
+    throw new InvalidArgumentError("Must be 'confirmed' or 'final'.")
+  }
+  return value
+}
+
+/**
  * Auto-detects whether `value` is an inline JSON string or a path to a JSON
  * file, and parses it. The "one positional, two delivery modes" input pattern
  * used by `wdk network create` and `wdk token add`.

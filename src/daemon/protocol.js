@@ -13,7 +13,7 @@
 // limitations under the License.
 
 /**
- * @typedef {'get_address' | 'get_balance' | 'estimate_fee' | 'send' | 'list_wallets' | 'status' | 'unlock_wallet' | 'lock_wallet' | 'lock' | 'call_method'} DaemonAction
+ * @typedef {'get_address' | 'get_balance' | 'estimate_fee' | 'send' | 'list_wallets' | 'status' | 'unlock_wallet' | 'lock_wallet' | 'lock' | 'call_method' | 'sign_message' | 'verify_message' | 'get_transaction'} DaemonAction
  */
 
 /**
@@ -29,6 +29,11 @@
  * @property {string} [amount] - The transfer amount in base units.
  * @property {string} [method] - The module method name (only for call_method).
  * @property {Record<string, string>} [args] - Raw method argument strings (only for call_method).
+ * @property {string} [message] - The message to sign or verify (only for sign_message/verify_message).
+ * @property {string} [signature] - The signature to check (only for verify_message).
+ * @property {string} [hash] - The transaction hash (only for get_transaction).
+ * @property {'confirmed' | 'final'} [finality] - The finality target to wait for (only for get_transaction).
+ * @property {number} [timeout] - The wait time budget in milliseconds (only for get_transaction with finality).
  */
 
 /**
@@ -44,6 +49,9 @@
 /** @typedef {{ balance: string, symbol: string, decimals: number }} GetBalanceResult */
 /** @typedef {{ fee: string, feeFormatted: string }} EstimateFeeResult */
 /** @typedef {{ txHash: string, network: string, from: string, to: string, amount: string, fee?: string }} SendResult */
+/** @typedef {{ address: string, signature: string }} SignMessageResult */
+/** @typedef {{ valid: boolean }} VerifyMessageResult */
+/** @typedef {{ transaction: unknown }} GetTransactionResult */
 /** @typedef {{ name: string, ttlMs: number, ttlRemaining: number }} WalletStatus */
 /** @typedef {{ wallets: WalletStatus[] }} ListWalletsResult */
 /** @typedef {{ unlocked: boolean, wallets: WalletStatus[], pid: number }} StatusResult */

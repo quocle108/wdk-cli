@@ -18,9 +18,9 @@
     }
   },
   "modules": {
-    "@tetherto/wdk-wallet-btc": { "version": "1.0.0-beta.8" },
+    "@tetherto/wdk-wallet-btc": { "version": "1.0.0-beta.15" },
     "@tetherto/wdk-wallet-evm": {
-      "version": "1.0.0-beta.11",
+      "version": "1.0.0-beta.18",
       "methods": {
         "getAllowance": { "kind": "read", "params": { "token": "string", "spender": "string" } },
         "getTokenBalances": { "kind": "read", "params": { "tokenAddresses": "string[]" } },
@@ -28,7 +28,7 @@
       }
     },
     "@tetherto/wdk-wallet-evm-erc-4337": {
-      "version": "1.0.0-beta.6",
+      "version": "1.0.0-beta.18",
       "methods": {
         "getAllowance": { "kind": "read", "params": { "token": "string", "spender": "string" } },
         "getTokenBalances": { "kind": "read", "params": { "tokenAddresses": "string[]" } },
@@ -37,9 +37,9 @@
         "approve": { "kind": "write", "style": "object", "params": { "token": "string", "spender": "string", "amount": "bigint" } }
       }
     },
-    "@tetherto/wdk-wallet-solana": { "version": "1.0.0-beta.7" },
+    "@tetherto/wdk-wallet-solana": { "version": "1.0.0-beta.14" },
     "@tetherto/wdk-wallet-spark": {
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.25",
       "methods": {
         "getStaticDepositAddress": { "kind": "read", "params": {} },
         "getSingleUseDepositAddress": { "kind": "read", "params": {} },
@@ -52,7 +52,7 @@
         "quotePayLightningInvoice": { "kind": "read", "style": "object", "params": { "encodedInvoice": "string", "amountSats": "number?" } }
       }
     },
-    "@tetherto/wdk-wallet-tron": { "version": "1.0.0-beta.9" },
+    "@tetherto/wdk-wallet-tron": { "version": "1.0.0-beta.13" },
     "@tetherto/wdk-protocol-fiat-moonpay": { "version": "1.0.0-beta.2" }
   },
   "networks": {
