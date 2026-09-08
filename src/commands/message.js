@@ -19,7 +19,7 @@ import { handleError } from '../errors/index.js'
 import { formatNetworkLabel } from '../ui/formatters.js'
 import { configureHelp } from '../ui/help.js'
 import { nonNegativeInt } from '../ui/parsers.js'
-import { signMessage, verifyMessage } from '../actions/sign.js'
+import { signMessage, verifyMessage } from '../actions/message.js'
 
 /** @typedef {import('commander').Command} Command */
 

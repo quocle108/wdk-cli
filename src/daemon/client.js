@@ -21,7 +21,9 @@ import {
   getDaemonPidPath,
   DAEMON_START_RETRIES,
   DAEMON_START_RETRY_INTERVAL_MS,
-  DAEMON_SPAWN_TIMEOUT_MS
+  DAEMON_SPAWN_TIMEOUT_MS,
+  MODULE_WAIT_TIMEOUT_MAX_MS,
+  IPC_WAIT_BUFFER_MS
 } from '../config/constants.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { configService } from '../services/config-service.js'
@@ -385,8 +387,9 @@ export class DaemonClient {
    */
   async getTransaction (network, hash, options = {}, wallet) {
     const { finality, timeout, index = 0 } = options
-    // A finality wait can run long; keep the IPC timeout above the poll budget.
-    const ipcTimeout = finality ? (timeout ?? 150000) + 30000 : 30000
+    const ipcTimeout = finality
+      ? (timeout ?? MODULE_WAIT_TIMEOUT_MAX_MS) + IPC_WAIT_BUFFER_MS
+      : 30000
     const resp = await this.request(
       { action: 'get_transaction', network, hash, finality, timeout, index, wallet },
       ipcTimeout

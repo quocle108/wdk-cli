@@ -27,7 +27,9 @@ jest.unstable_mockModule('../../../src/config/constants.js', () => ({
   getDaemonPidPath: () => DUMMY_PID_PATH,
   DAEMON_START_RETRIES: 1,
   DAEMON_START_RETRY_INTERVAL_MS: 1,
-  DAEMON_SPAWN_TIMEOUT_MS: 100
+  DAEMON_SPAWN_TIMEOUT_MS: 100,
+  MODULE_WAIT_TIMEOUT_MAX_MS: 150000,
+  IPC_WAIT_BUFFER_MS: 30000
 }))
 
 jest.unstable_mockModule('../../../src/services/config-service.js', () => ({

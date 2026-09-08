@@ -55,6 +55,10 @@ export const DAEMON_MAX_REQUEST_BYTES = 64 * 1024
 export const DAEMON_START_RETRIES = 5
 export const DAEMON_START_RETRY_INTERVAL_MS = 500
 export const DAEMON_SPAWN_TIMEOUT_MS = 2000
+/** Wait budget assumed for a finality wait without an explicit timeout (largest module default plus margin). */
+export const MODULE_WAIT_TIMEOUT_MAX_MS = 150000
+/** IPC socket headroom over a daemon-side wait, so the client outlasts the daemon's poll loop. */
+export const IPC_WAIT_BUFFER_MS = 30000
 
 /**
  * Returns the platform-appropriate daemon socket path.
