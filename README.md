@@ -290,6 +290,8 @@ wdk get balance --all --testnet                                 # All balances i
 wdk get history --network ethereum                                              # All supported tokens
 wdk get history --network ethereum --token xaut --limit 50                      # XAUT transfers, last 50
 wdk get history --network ethereum --from-date 2026-01-01 --to-date 2026-03-31  # Date range filter
+wdk get transaction --network ethereum --hash <txHash>                          # Normalized receipt by hash
+wdk get transaction --network ethereum --hash <txHash> --finality confirmed     # Block until mined
 ```
 
 `--token` accepts a registered token ticker (e.g. `usdt`, `eth`, `xaut`). See `wdk token list` for available tokens. Use `wdk token add` to register a new token.
@@ -297,6 +299,8 @@ wdk get history --network ethereum --from-date 2026-01-01 --to-date 2026-03-31  
 Wallets are derived deterministically from your seed phrase using HD paths (BIP-84 for BTC, BIP-44 for EVM/Solana) — no local state is stored. `get address` works without a provider configured (local derivation only), while `get balance` requires a provider connection.
 
 `get history` uses the [WDK Indexer API](https://github.com/tetherto/wdk-indexer-http). Configure with `WDK_INDEXER_BASE_URL` / `WDK_INDEXER_API_KEY` env vars, or use `wdk config set` for `indexer.baseUrl` and `indexer.apiKey`. If using a proxy provider that includes the API key, only the base URL is needed.
+
+`get transaction` returns a normalized receipt (`finality`: `pending` | `confirmed` | `final` | `dropped`, plus `success`, `block`, `fee`). Pass `--finality confirmed|final` to block until the target is reached; `--timeout <ms>` caps the wait.
 
 ### Send
 
@@ -309,6 +313,15 @@ wdk send --to <address> --amount <decimal> --network ethereum --dry-run         
 ```
 
 `--amount` is decimal by default (e.g. `1.5` for 1.5 ETH, `0.001` for 0.001 BTC, `1.23456789012345678` for full 18-decimal ETH precision). The CLI converts using the token's registered decimals. If the value has more decimal places than the token allows (e.g. `1.12345678` with 6-decimal USDT), it's rejected with `INVALID_AMOUNT`. Pass `--base-units` to interpret the value as raw base units (wei/satoshi/lamport) — useful for scripts that already have BigInt amounts. Fee estimation runs before confirmation; use `--dry-run` to preview the transaction with fee and USD estimates without sending.
+
+### Message
+
+```bash
+wdk message sign --network ethereum --message "hello"                        # Sign with the account key
+wdk message verify --network ethereum --message "hello" --signature <sig>    # Check a signature
+```
+
+`message sign` uses each chain's standard scheme (EIP-191 `personal_sign` on EVM). `message verify` reports whether the signature was produced by the wallet account at the given `--index`.
 
 ### Method
 

@@ -112,6 +112,27 @@ Step 3: Execute the transfer (drop `--dry-run`):
 wdk send --to 0xRECIPIENT --amount 1 --network ethereum --json
 ```
 
+### Sign / Verify Message
+
+```bash
+wdk message sign --network ethereum --message "hello" --json
+# {"network":"ethereum","index":0,"address":"0x...","message":"hello","signature":"0x..."}
+wdk message verify --network ethereum --message "hello" --signature 0xSIG --json
+# {"network":"ethereum","index":0,"message":"hello","signature":"0x...","valid":true}
+```
+
+**Signatures can authorize actions on some chains — show the exact message to the user and wait for confirmation in chat before signing.**
+
+### Get Transaction
+
+```bash
+wdk get transaction --network ethereum --hash 0xTXHASH --json
+# {"network":"ethereum","hash":"0x...","index":0,"transaction":{"hash":"0x...","finality":"final","success":true,"block":46147,"fee":"1050000000000000"}}
+
+# Block until mined (finality: confirmed | final; --timeout in ms)
+wdk get transaction --network ethereum --hash 0xTXHASH --finality confirmed --timeout 60000 --json
+```
+
 ### Transaction History
 
 ```bash
