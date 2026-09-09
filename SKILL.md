@@ -112,22 +112,44 @@ Step 3: Execute the transfer (drop `--dry-run`):
 wdk send --to 0xRECIPIENT --amount 1 --network ethereum --json
 ```
 
+### Sign / Verify Message
+
+```bash
+wdk message sign --network ethereum --message "hello" --json
+# {"network":"ethereum","index":0,"address":"0x...","message":"hello","signature":"0x..."}
+wdk message verify --network ethereum --message "hello" --signature 0xSIG --json
+# {"network":"ethereum","index":0,"message":"hello","signature":"0x...","valid":true}
+```
+
+**Signatures can authorize actions on some chains — show the exact message to the user and wait for confirmation in chat before signing.**
+
+### Get Transaction
+
+```bash
+wdk get transaction --network ethereum --hash 0xTXHASH --json
+# {"network":"ethereum","hash":"0x...","index":0,"transaction":{"hash":"0x...","finality":"final","success":true,"block":46147,"fee":"1050000000000000"}}
+
+# Block until mined (finality: confirmed | final; --timeout in ms)
+wdk get transaction --network ethereum --hash 0xTXHASH --finality confirmed --timeout 60000 --json
+```
+
 ### Swap / Bridge
 
-Swap one token for another, or bridge the same token to another chain — routed across installed protocols (best output wins). Same dry-run → confirm → execute flow as Send: funds move on execute.
+Swap one token for another, or bridge the same token to another chain — routed across installed protocols (best quote wins: highest output for exact-in, lowest input for `--amount-out`). Same dry-run → confirm → execute flow as Send: funds move on execute.
 
 Step 1: Preview with `--dry-run`.
 
 ```bash
 # Swap (add --to-network for a cross-chain swap)
 wdk swap --network ethereum --from-token usdt --to-token eth --amount-in 100 --dry-run --json
-# {"kind":"swap","protocol":"symbiosis","payFormatted":"100 USDT","receiveFormatted":"0.0407 ETH","receiveUsd":100.10,"skipped":[{"protocol":"velora","reason":"insufficient funds"}]}
+# {"kind":"swap","protocol":"symbiosis","payFormatted":"100 USDT","receiveFormatted":"0.0407 ETH","receiveUsd":100.10,"feesIncludedFormatted":"includes 0.00015 ETH Symbiosis on-chain fee","skipped":[{"protocol":"velora","reason":"insufficient funds"}]}
+# feesFormatted = fees paid on top of the amounts (gas/bridge); feesIncludedFormatted = provider fees already deducted from the quoted amounts
 
 # Bridge the same token to another chain (exact-in)
 wdk bridge --network ethereum --token usdt --to-network avalanche --amount 100 --dry-run --json
 ```
 
-Step 2: Show the preview (protocol, amounts, USD, `skipped`) to the user and wait for confirmation.
+Step 2: Show the preview (protocol, amounts, USD, fees, `skipped`) to the user and wait for confirmation.
 
 Step 3: Execute (drop `--dry-run`):
 

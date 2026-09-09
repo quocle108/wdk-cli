@@ -46,6 +46,19 @@ export function nonNegativeInt (value) {
 }
 
 /**
+ * Commander argParser for a transaction finality target.
+ *
+ * @param {string} value - The raw CLI argument.
+ * @returns {'confirmed' | 'final'} The validated target.
+ */
+export function finalityTarget (value) {
+  if (value !== 'confirmed' && value !== 'final') {
+    throw new InvalidArgumentError("Must be 'confirmed' or 'final'.")
+  }
+  return value
+}
+
+/**
  * Commander argParser for a positive decimal amount (> 0). A coarse gate for
  * early, crisp rejection of `0`, negatives, and non-numbers; exact
  * token-precision validation stays in `toBaseUnits`.

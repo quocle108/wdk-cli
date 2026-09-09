@@ -22,6 +22,8 @@ import { getBalance, getAllBalances } from '../actions/balance.js'
 import { getAddress, getAllAddresses } from '../actions/address.js'
 import { getHistory } from '../actions/history.js'
 import { previewSend, executeSend } from '../actions/send.js'
+import { signMessage, verifyMessage } from '../actions/message.js'
+import { getTransaction, FINALITY_TARGETS } from '../actions/transaction.js'
 import { previewSwap, executeSwap } from '../actions/swap.js'
 import { createRampUrl } from '../actions/ramp.js'
 import { listTokens, getToken } from '../actions/token.js'
@@ -335,6 +337,28 @@ export async function startMcpServer () {
   )
 
   server.registerTool(
+    'sign_message',
+    {
+      description:
+        'Sign an arbitrary message with the wallet account\'s private key. IMPORTANT: signatures can authorize actions on some chains — show the exact message to the user and only call after they explicitly confirm.',
+      inputSchema: {
+        network: z.string().describe('Network name (e.g. ethereum, bitcoin)'),
+        message: z.string().describe('Message to sign'),
+        index: z.number().optional().default(0).describe('Account index (default: 0)'),
+        wallet: z.string().optional().describe('Wallet name (uses default wallet if omitted)')
+      }
+    },
+    async ({ network, message, index, wallet }) => {
+      try {
+        const result = await signMessage({ network, message, index, wallet })
+        return jsonResult(result)
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
     'swap_token',
     {
       description:
@@ -391,6 +415,58 @@ export async function startMcpServer () {
         }
         const result = await executeSwap(input)
         return jsonResult({ success: true, ...result })
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
+    'verify_message',
+    {
+      description: 'Verify a message signature against the wallet account\'s key.',
+      inputSchema: {
+        network: z.string().describe('Network name (e.g. ethereum, bitcoin)'),
+        message: z.string().describe('Signed message'),
+        signature: z.string().describe('Signature to check'),
+        index: z.number().optional().default(0).describe('Account index (default: 0)'),
+        wallet: z.string().optional().describe('Wallet name (uses default wallet if omitted)')
+      }
+    },
+    async ({ network, message, signature, index, wallet }) => {
+      try {
+        const result = await verifyMessage({ network, message, signature, index, wallet })
+        return jsonResult(result)
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
+    'get_transaction',
+    {
+      description:
+        'Get a transaction\'s normalized receipt by hash. Optionally block until it reaches confirmed or final.',
+      inputSchema: {
+        network: z.string().describe('Network name (e.g. ethereum, bitcoin)'),
+        hash: z.string().describe('Transaction hash'),
+        finality: z
+          .enum(FINALITY_TARGETS)
+          .optional()
+          .describe('Block until this finality target is reached; omit to return the current state immediately'),
+        timeout: z
+          .number()
+          .optional()
+          .describe('Max wait in milliseconds (requires finality)'),
+        index: z.number().optional().default(0).describe('Account index (default: 0)'),
+        wallet: z.string().optional().describe('Wallet name (uses default wallet if omitted)')
+      }
+    },
+    async ({ network, hash, finality, timeout, index, wallet }) => {
+      try {
+        const result = await getTransaction({ network, hash, finality, timeout, index, wallet })
+        return jsonResult(result)
       } catch (e) {
         return errorResult(e)
       }

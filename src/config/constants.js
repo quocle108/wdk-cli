@@ -55,6 +55,16 @@ export const DAEMON_MAX_REQUEST_BYTES = 64 * 1024
 export const DAEMON_START_RETRIES = 5
 export const DAEMON_START_RETRY_INTERVAL_MS = 500
 export const DAEMON_SPAWN_TIMEOUT_MS = 2000
+/** Socket timeout for daemon control requests served from memory (status, lock). */
+export const IPC_CONTROL_TIMEOUT_MS = 5000
+/** Socket timeout for single-operation requests (one RPC round trip or local key work). */
+export const IPC_READ_TIMEOUT_MS = 30000
+/** Socket timeout for requests that sign and broadcast a transaction. */
+export const IPC_WRITE_TIMEOUT_MS = 60000
+/** Wait budget sent with a finality wait when no explicit timeout is given. */
+export const DEFAULT_FINALITY_TIMEOUT_MS = 150000
+/** IPC socket headroom over a daemon-side wait, so the client outlasts the daemon's poll loop. */
+export const IPC_WAIT_BUFFER_MS = 30000
 
 /**
  * Returns the platform-appropriate daemon socket path.

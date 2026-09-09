@@ -505,6 +505,63 @@ export class WalletDaemon {
         }
       }
 
+      case 'sign_message': {
+        if (!req.network || !isValidNetwork(req.network)) {
+          return { ok: false, error: `Invalid network: ${req.network}` }
+        }
+        if (!req.message) {
+          return { ok: false, error: 'Missing required field: message' }
+        }
+        try {
+          const wdk = this.#requireWallet(wallet)
+          const account = await wdk.getAccount(req.network, req.index ?? 0)
+          const signature = await account.sign(req.message)
+          const address = await account.getAddress()
+          return { ok: true, data: { address, signature } }
+        } catch (e) {
+          return errorResponse(e)
+        }
+      }
+
+      case 'verify_message': {
+        if (!req.network || !isValidNetwork(req.network)) {
+          return { ok: false, error: `Invalid network: ${req.network}` }
+        }
+        if (!req.message || !req.signature) {
+          return { ok: false, error: 'Missing required fields: message, signature' }
+        }
+        try {
+          const wdk = this.#requireWallet(wallet)
+          const account = await wdk.getAccount(req.network, req.index ?? 0)
+          const valid = await account.verify(req.message, req.signature)
+          return { ok: true, data: { valid } }
+        } catch (e) {
+          return errorResponse(e)
+        }
+      }
+
+      case 'get_transaction': {
+        if (!req.network || !isValidNetwork(req.network)) {
+          return { ok: false, error: `Invalid network: ${req.network}` }
+        }
+        if (!req.hash) {
+          return { ok: false, error: 'Missing required field: hash' }
+        }
+        try {
+          const wdk = this.#requireWallet(wallet)
+          const account = await wdk.getAccount(req.network, req.index ?? 0)
+          const receipt = req.finality
+            ? await account.waitForTransaction(req.hash, {
+              target: req.finality,
+              ...(req.timeout ? { timeout: req.timeout } : {})
+            })
+            : await account.getTransaction(req.hash)
+          const safe = JSON.parse(JSON.stringify({ v: receipt }, bigintReplacer)).v
+          return { ok: true, data: { transaction: safe } }
+        } catch (e) {
+          return errorResponse(e)
+        }
+      }
       case 'quote_swap':
         return this.#handleQuote(req, 'swap', wallet)
 
