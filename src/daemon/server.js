@@ -630,8 +630,10 @@ export class WalletDaemon {
   /**
    * Builds the account, normalized request, and display context shared by the
    * quote and execute handlers. Converts the string amounts back to BigInt and
-   * defaults the recipient to the account's own address — bridge requires one
-   * (swap's `to` is optional), and it's valid on these EVM destination chains.
+   * defaults the recipient to the wallet's own address on the destination
+   * network — the same seed owns an address on every chain, so a cross-VM
+   * route receives a correctly-formatted recipient (bridge requires one;
+   * swap's `to` is optional).
    *
    * @param {DaemonRequest} req - The parsed request object (with `req.request` set).
    * @param {string} wallet - The resolved wallet name.
@@ -642,7 +644,10 @@ export class WalletDaemon {
     const account = await wdk.getAccount(req.network, req.index ?? 0)
 
     const r = /** @type {import('./protocol.js').QuoteRequest} */ (req.request)
-    const recipient = r.recipient || await account.getAddress()
+    const destAccount = r.toNetwork && r.toNetwork !== req.network
+      ? await wdk.getAccount(r.toNetwork, req.index ?? 0)
+      : account
+    const recipient = r.recipient || await destAccount.getAddress()
     const request = {
       fromToken: r.fromToken,
       toToken: r.toToken,
