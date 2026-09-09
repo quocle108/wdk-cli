@@ -383,7 +383,7 @@ export async function startMcpServer () {
     'get_transaction',
     {
       description:
-        'Get a transaction\'s normalized receipt by hash (finality: pending, confirmed, final, or dropped). Optionally block until a finality target is reached.',
+        'Get a transaction\'s normalized receipt by hash. Optionally block until it reaches confirmed or final.',
       inputSchema: {
         network: z.string().describe('Network name (e.g. ethereum, bitcoin)'),
         hash: z.string().describe('Transaction hash'),
