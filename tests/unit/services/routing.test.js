@@ -52,6 +52,7 @@ describe('pickBest', () => {
 
     expect(pickBest(quotes, 'out').protocol).toBe('velora')
   })
+
 })
 
 describe('buildNoRouteError', () => {

@@ -61,6 +61,9 @@ export function printSwapPreview (preview) {
   console.log(`  Protocol:  ${chalk.cyan(preview.protocol)}`)
   console.log(`  You pay:   ${pay}`)
   console.log(`  You get:   ${receive}`)
+  if (preview.feesFormatted) {
+    console.log(`  Fees:      ${preview.feesFormatted}`)
+  }
   printSkipped(preview.skipped)
   console.log()
 }

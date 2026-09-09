@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { daemonClient } from '../daemon/client.js'
-import { validateNetwork } from '../config/networks.js'
+import { validateNetwork, getNetworkConfig } from '../config/networks.js'
 import { resolveTokenIdentifier, getTokenByName, toBaseUnits } from '../services/token-service.js'
 import { convertToUsd } from '../services/price-service.js'
 import { validateRecipient } from '../services/address-service.js'
@@ -52,6 +52,7 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  * @property {string} outputAmount - The received amount in base units.
  * @property {number} [receiveUsd] - Approximate USD value of the received amount.
  * @property {unknown} fees - The winning quote's fee breakdown.
+ * @property {string} [feesFormatted] - Human-readable native fees (gas plus bridge fee), when the quote reports them.
  * @property {SkippedProtocol[]} skipped - Protocols that were tried but did not quote, with reasons.
  */
 
@@ -175,8 +176,30 @@ export async function previewSwap (input) {
     outputAmount: quote.outputAmount,
     receiveUsd,
     fees: quote.fees,
+    feesFormatted: formatQuoteFees(input.network, quote.fees),
     skipped: quote.skipped
   }
+}
+
+/**
+ * Formats a quote's native-denominated fees (gas plus optional bridge fee) for
+ * display, in the source network's native symbol. BigInt fees cross the IPC
+ * socket as decimal strings; provider-shaped fee objects (swidge) yield
+ * undefined and are shown only in JSON output.
+ *
+ * @param {string} network - The source network name.
+ * @param {unknown} fees - The winning quote's fee breakdown.
+ * @returns {string | undefined} The formatted fees, or undefined when the shape is unknown.
+ */
+function formatQuoteFees (network, fees) {
+  const f = /** @type {{ gas?: unknown, bridge?: unknown }} */ (fees ?? {})
+  if (typeof f.gas !== 'string' || !/^\d+$/.test(f.gas)) return undefined
+  const { decimals, nativeSymbol } = getNetworkConfig(network)
+  const parts = [`${formatAmount(BigInt(f.gas), decimals, nativeSymbol)} gas`]
+  if (typeof f.bridge === 'string' && /^\d+$/.test(f.bridge)) {
+    parts.push(`${formatAmount(BigInt(f.bridge), decimals, nativeSymbol)} bridge fee`)
+  }
+  return parts.join(' + ')
 }
 
 /**

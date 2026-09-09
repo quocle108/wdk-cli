@@ -28,7 +28,9 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  * output received; exact-out minimizes the input spent (every exact-out quote
  * matches the requested output, so the input is what differs between
  * protocols). Ties keep the first, which preserves the order protocols were
- * quoted in.
+ * quoted in — fees stay out of the ranking because their denomination and
+ * whether they are already netted into the quote vary by protocol kind; the
+ * preview displays them so the user makes that call.
  *
  * @param {ProtocolQuote[]} quotes - Non-empty list of successful quotes.
  * @param {'in' | 'out'} [exactSide] - Which side the request fixed (default: 'in').
