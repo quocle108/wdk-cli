@@ -22,7 +22,7 @@ import {
   DAEMON_START_RETRIES,
   DAEMON_START_RETRY_INTERVAL_MS,
   DAEMON_SPAWN_TIMEOUT_MS,
-  MODULE_WAIT_TIMEOUT_MAX_MS,
+  DEFAULT_FINALITY_TIMEOUT_MS,
   IPC_WAIT_BUFFER_MS
 } from '../config/constants.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
@@ -371,7 +371,7 @@ export class DaemonClient {
   /**
    * @typedef {Object} GetTransactionOptions
    * @property {'confirmed' | 'final'} [finality] - Block until this finality target is reached; omit to fetch the current state.
-   * @property {number} [timeout] - Wait time budget in milliseconds (module default when omitted).
+   * @property {number} [timeout] - Wait time budget in milliseconds (default: 150,000).
    * @property {number} [index] - The BIP-44 account index (default: 0).
    */
 
@@ -386,10 +386,10 @@ export class DaemonClient {
    * @returns {Promise<unknown>} The normalized receipt (BigInt values serialized as strings).
    */
   async getTransaction (network, hash, options = {}, wallet) {
-    const { finality, timeout, index = 0 } = options
-    const ipcTimeout = finality
-      ? (timeout ?? MODULE_WAIT_TIMEOUT_MAX_MS) + IPC_WAIT_BUFFER_MS
-      : 30000
+    const { finality, index = 0 } = options
+    // Always send an explicit wait budget, so the socket outlives the daemon by construction.
+    const timeout = finality ? options.timeout ?? DEFAULT_FINALITY_TIMEOUT_MS : undefined
+    const ipcTimeout = finality ? timeout + IPC_WAIT_BUFFER_MS : 30000
     const resp = await this.request(
       { action: 'get_transaction', network, hash, finality, timeout, index, wallet },
       ipcTimeout
