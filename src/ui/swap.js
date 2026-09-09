@@ -64,6 +64,9 @@ export function printSwapPreview (preview) {
   if (preview.feesFormatted) {
     console.log(`  Fees:      ${preview.feesFormatted}`)
   }
+  if (preview.feesIncludedFormatted) {
+    console.log(chalk.dim(`             (${preview.feesIncludedFormatted})`))
+  }
   printSkipped(preview.skipped)
   console.log()
 }

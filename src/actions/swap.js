@@ -13,8 +13,8 @@
 // limitations under the License.
 
 import { daemonClient } from '../daemon/client.js'
-import { validateNetwork, getNetworkConfig } from '../config/networks.js'
-import { resolveTokenIdentifier, getTokenByName, toBaseUnits } from '../services/token-service.js'
+import { validateNetwork } from '../config/networks.js'
+import { resolveTokenIdentifier, getTokenByName, getNativeToken, toBaseUnits } from '../services/token-service.js'
 import { convertToUsd } from '../services/price-service.js'
 import { validateRecipient } from '../services/address-service.js'
 import { getProtocol } from '../services/protocol-service.js'
@@ -52,7 +52,8 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  * @property {string} outputAmount - The received amount in base units.
  * @property {number} [receiveUsd] - Approximate USD value of the received amount.
  * @property {unknown} fees - The winning quote's fee breakdown.
- * @property {string} [feesFormatted] - Human-readable native fees (gas plus bridge fee), when the quote reports them.
+ * @property {string} [feesFormatted] - Human-readable fees charged on top of the quoted amounts.
+ * @property {string} [feesIncludedFormatted] - Human-readable note for fees the provider already deducted from the quoted amounts.
  * @property {SkippedProtocol[]} skipped - Protocols that were tried but did not quote, with reasons.
  */
 
@@ -176,30 +177,91 @@ export async function previewSwap (input) {
     outputAmount: quote.outputAmount,
     receiveUsd,
     fees: quote.fees,
-    feesFormatted: formatQuoteFees(input.network, quote.fees),
+    ...formatQuoteFees(input.network, from, to, quote.fees),
     skipped: quote.skipped
   }
 }
 
 /**
- * Formats a quote's native-denominated fees (gas plus optional bridge fee) for
- * display, in the source network's native symbol. BigInt fees cross the IPC
- * socket as decimal strings; provider-shaped fee objects (swidge) yield
- * undefined and are shown only in JSON output.
+ * @typedef {Object} FormattedFees
+ * @property {string} [feesFormatted] - Fees charged on top of the quoted amounts.
+ * @property {string} [feesIncludedFormatted] - Note for fees the provider already deducted from the quoted amounts.
+ */
+
+/**
+ * Formats the winning quote's fees for display, split by whether the user pays
+ * them on top or the provider already deducted them from the quoted amounts.
+ * Swap and bridge fees are native-denominated and always on top; swidge fees
+ * are itemised per fee (see {@link formatSwidgeFees}). BigInt fees cross the
+ * IPC socket as decimal strings.
  *
  * @param {string} network - The source network name.
+ * @param {ReturnType<typeof resolveToken>} from - The resolved source token.
+ * @param {ReturnType<typeof resolveToken>} to - The resolved destination token.
  * @param {unknown} fees - The winning quote's fee breakdown.
- * @returns {string | undefined} The formatted fees, or undefined when the shape is unknown.
+ * @returns {FormattedFees} The formatted fees; empty when the quote reports none.
  */
-function formatQuoteFees (network, fees) {
-  const f = /** @type {{ gas?: unknown, bridge?: unknown }} */ (fees ?? {})
-  if (typeof f.gas !== 'string' || !/^\d+$/.test(f.gas)) return undefined
-  const { decimals, nativeSymbol } = getNetworkConfig(network)
-  const parts = [`${formatAmount(BigInt(f.gas), decimals, nativeSymbol)} gas`]
-  if (typeof f.bridge === 'string' && /^\d+$/.test(f.bridge)) {
-    parts.push(`${formatAmount(BigInt(f.bridge), decimals, nativeSymbol)} bridge fee`)
+function formatQuoteFees (network, from, to, fees) {
+  const native = getNativeToken(network)
+  if (Array.isArray(fees)) {
+    return formatSwidgeFees(native ? [from, to, native] : [from, to], fees)
   }
-  return parts.join(' + ')
+  const f = /** @type {{ gas?: unknown, bridge?: unknown }} */ (fees ?? {})
+  if (typeof f.gas !== 'string' || !/^\d+$/.test(f.gas) || !native) return {}
+  const parts = [`${formatAmount(BigInt(f.gas), native.decimals, native.symbol)} gas`]
+  if (typeof f.bridge === 'string' && /^\d+$/.test(f.bridge)) {
+    parts.push(`${formatAmount(BigInt(f.bridge), native.decimals, native.symbol)} bridge fee`)
+  }
+  return { feesFormatted: parts.join(' + ') }
+}
+
+/**
+ * Splits a swidge quote's itemised fees into fees paid on top and fees the
+ * provider already deducted from the quoted amounts.
+ *
+ * @param {{ address?: string, symbol: string, decimals: number }[]} tokens - Tokens with known decimals.
+ * @param {unknown[]} fees - The provider's itemised fee list.
+ * @returns {FormattedFees} The formatted fees; empty when the list is empty.
+ */
+function formatSwidgeFees (tokens, fees) {
+  /** @type {string[]} */
+  const paid = []
+  /** @type {string[]} */
+  const included = []
+  let hidden = false // included fees we cannot format
+
+  for (const item of fees) {
+    const fee = /** @type {{ type?: unknown, amount?: unknown, token?: unknown, included?: unknown, description?: unknown }} */ (item ?? {})
+    const label = typeof fee.description === 'string' && fee.description !== ''
+      ? fee.description
+      : typeof fee.type === 'string' ? `${fee.type} fee` : 'fee'
+    const amount = typeof fee.amount === 'string' && /^\d+$/.test(fee.amount) ? fee.amount : ''
+    const tokenId = typeof fee.token === 'string' ? fee.token : ''
+    const match = tokens.find((t) =>
+      (t.address && t.address.toLowerCase() === tokenId.toLowerCase()) ||
+      t.symbol.toUpperCase() === tokenId.toUpperCase()
+    )
+    const value = amount && match ? formatAmount(BigInt(amount), match.decimals, match.symbol) : ''
+
+    if (fee.included === true) {
+      // Already inside the quoted amounts — informational only, never a raw dump.
+      if (value) included.push(`${value} ${label}`)
+      else hidden = true
+    } else {
+      // Paid on top — always shown, in raw base units when the token is unknown.
+      paid.push([value || amount, value ? '' : tokenId, label].filter(Boolean).join(' '))
+    }
+  }
+
+  /** @type {FormattedFees} */
+  const result = {}
+  if (paid.length > 0) result.feesFormatted = paid.join(' + ')
+  if (included.length > 0) {
+    result.feesIncludedFormatted = `includes ${included.join(' + ')}` + (hidden ? ' and other provider fees' : '')
+  } else if (hidden) {
+    result.feesIncludedFormatted = 'provider fees included in quote'
+  }
+  return result
 }
 
 /**
