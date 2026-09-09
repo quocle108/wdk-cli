@@ -326,7 +326,7 @@ wdk bridge --network ethereum --token usdt --to-network avalanche --amount 100 -
 wdk swap --network ethereum --from-token usdt --to-token eth --amount-in 100 --protocol velora  # force a protocol
 ```
 
-`wdk swap` exchanges one token for another (add `--to-network` to swap across chains); `wdk bridge` moves the *same* token to another chain (single `--token`, exact-in `--amount`). Both are **best-route**: every installed protocol capable of the request is quoted and the highest-output quote wins — pass `--protocol <name>` to force one. Use `--dry-run` to preview the route, amounts, and skipped protocols without executing. Protocols come from the `protocols` registry in `wdk.config.json`; add more with `wdk module add`.
+`wdk swap` exchanges one token for another (add `--to-network` to swap across chains); `wdk bridge` moves the *same* token to another chain (single `--token`, exact-in `--amount`). Both are **best-route**: every installed protocol capable of the request is quoted and the best quote wins (highest output for exact-in, lowest input for `--amount-out`) — pass `--protocol <name>` to force one. Use `--dry-run` to preview the route, amounts, and skipped protocols without executing. Protocols come from the `protocols` registry in `wdk.config.json`; add more with `wdk module add`.
 
 ### Method
 
