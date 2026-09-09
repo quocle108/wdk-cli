@@ -22,6 +22,9 @@ import {
   DAEMON_START_RETRIES,
   DAEMON_START_RETRY_INTERVAL_MS,
   DAEMON_SPAWN_TIMEOUT_MS,
+  IPC_CONTROL_TIMEOUT_MS,
+  IPC_READ_TIMEOUT_MS,
+  IPC_WRITE_TIMEOUT_MS,
   DEFAULT_FINALITY_TIMEOUT_MS,
   IPC_WAIT_BUFFER_MS
 } from '../config/constants.js'
@@ -175,7 +178,7 @@ export class DaemonClient {
    * @param {number} [timeoutMs] - Request timeout in milliseconds.
    * @returns {Promise<DaemonResponse>} The daemon response.
    */
-  async request (req, timeoutMs = 5000) {
+  async request (req, timeoutMs = IPC_CONTROL_TIMEOUT_MS) {
     if (!(await this.isRunning())) {
       throw new WdkCliError('Wallet is locked.', ErrorCode.WALLET_LOCKED)
     }
@@ -246,7 +249,7 @@ export class DaemonClient {
    * @returns {Promise<string>} The derived address.
    */
   async getAddress (network, index = 0, wallet) {
-    const resp = await this.request({ action: 'get_address', network, index, wallet }, 30000)
+    const resp = await this.request({ action: 'get_address', network, index, wallet }, IPC_READ_TIMEOUT_MS)
     this.#assertOk(resp, 'Failed to get address')
     const data = /** @type {GetAddressResult} */ (resp.data)
     return data.address
@@ -262,7 +265,7 @@ export class DaemonClient {
    * @returns {Promise<GetBalanceResult>} The balance info.
    */
   async getBalance (network, index = 0, token, wallet) {
-    const resp = await this.request({ action: 'get_balance', network, index, token, wallet }, 30000)
+    const resp = await this.request({ action: 'get_balance', network, index, token, wallet }, IPC_READ_TIMEOUT_MS)
     this.#assertOk(resp, 'Failed to get balance')
     const data = /** @type {GetBalanceResult} */ (resp.data)
     return data
@@ -282,7 +285,7 @@ export class DaemonClient {
   async estimateFee (network, index, to, amount, token, wallet) {
     const resp = await this.request(
       { action: 'estimate_fee', network, index, to, amount, token, wallet },
-      30000
+      IPC_READ_TIMEOUT_MS
     )
     this.#assertOk(resp, 'Failed to estimate fee')
     const data = /** @type {EstimateFeeResult} */ (resp.data)
@@ -303,7 +306,7 @@ export class DaemonClient {
   async send (network, index, to, amount, token, wallet) {
     const resp = await this.request(
       { action: 'send', network, index, to, amount, token, wallet },
-      60000
+      IPC_WRITE_TIMEOUT_MS
     )
     this.#assertOk(resp, 'Failed to send transaction')
     const data = /** @type {SendResult} */ (resp.data)
@@ -323,7 +326,7 @@ export class DaemonClient {
   async callMethod (network, method, args, index = 0, wallet) {
     const resp = await this.request(
       { action: 'call_method', network, method, args, index, wallet },
-      60000
+      IPC_WRITE_TIMEOUT_MS
     )
     this.#assertOk(resp, `Failed to call ${method}`)
     const data = /** @type {{ result: unknown }} */ (resp.data)
@@ -342,7 +345,7 @@ export class DaemonClient {
   async signMessage (network, message, index = 0, wallet) {
     const resp = await this.request(
       { action: 'sign_message', network, message, index, wallet },
-      30000
+      IPC_READ_TIMEOUT_MS
     )
     this.#assertOk(resp, 'Failed to sign message')
     return /** @type {SignMessageResult} */ (resp.data)
@@ -361,7 +364,7 @@ export class DaemonClient {
   async verifyMessage (network, message, signature, index = 0, wallet) {
     const resp = await this.request(
       { action: 'verify_message', network, message, signature, index, wallet },
-      30000
+      IPC_READ_TIMEOUT_MS
     )
     this.#assertOk(resp, 'Failed to verify message')
     const data = /** @type {VerifyMessageResult} */ (resp.data)
@@ -389,7 +392,7 @@ export class DaemonClient {
     const { finality, index = 0 } = options
     // Always send an explicit wait budget, so the socket outlives the daemon by construction.
     const timeout = finality ? options.timeout ?? DEFAULT_FINALITY_TIMEOUT_MS : undefined
-    const ipcTimeout = finality ? timeout + IPC_WAIT_BUFFER_MS : 30000
+    const ipcTimeout = finality ? timeout + IPC_WAIT_BUFFER_MS : IPC_READ_TIMEOUT_MS
     const resp = await this.request(
       { action: 'get_transaction', network, hash, finality, timeout, index, wallet },
       ipcTimeout
@@ -410,7 +413,7 @@ export class DaemonClient {
   async unlockWallet (name, passphrase, ttlMinutes = 5) {
     const resp = await this.request(
       { action: 'unlock_wallet', wallet: name, passphrase, ttl: ttlMinutes },
-      30000
+      IPC_READ_TIMEOUT_MS
     )
     this.#assertOk(resp, `Failed to unlock wallet '${name}'`)
   }
