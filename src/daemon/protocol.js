@@ -13,7 +13,36 @@
 // limitations under the License.
 
 /**
- * @typedef {'get_address' | 'get_balance' | 'estimate_fee' | 'send' | 'list_wallets' | 'status' | 'unlock_wallet' | 'lock_wallet' | 'lock' | 'call_method' | 'sign_message' | 'verify_message' | 'get_transaction'} DaemonAction
+ * @typedef {'get_address' | 'get_balance' | 'estimate_fee' | 'send' | 'list_wallets' | 'status' | 'unlock_wallet' | 'lock_wallet' | 'lock' | 'call_method' | 'quote_swap' | 'quote_bridge' | 'execute_swap' | 'execute_bridge' | 'sign_message' | 'verify_message' | 'get_transaction'} DaemonAction
+ */
+
+/**
+ * A token as it crosses the IPC boundary for a quote: its contract address and
+ * decimals. Native assets use the sentinel address (see actions/swap.js).
+ *
+ * @typedef {Object} QuoteToken
+ * @property {string} [address] - Contract address, or the native identifier (`nativeId`) for native. Absent when a native asset declares none.
+ * @property {number} decimals - The token's decimals.
+ * @property {string} symbol - The token symbol (for provider identifier resolution).
+ * @property {boolean} isNative - Whether the token is the chain's native asset.
+ */
+
+/**
+ * A swap/bridge quote request. Amounts are decimal strings because BigInt
+ * cannot cross the JSON socket; the daemon converts them. Exactly one of
+ * `amountIn` / `amountOut` is set. `fromSymbol` / `toSymbol` / `toNetwork` are
+ * carried only for the no-route message.
+ *
+ * @typedef {Object} QuoteRequest
+ * @property {QuoteToken} fromToken - The resolved source token.
+ * @property {QuoteToken} toToken - The resolved destination token.
+ * @property {string | number} [toChain] - The destination chain, when it differs from the source.
+ * @property {string} [amountIn] - Exact input amount in base units.
+ * @property {string} [amountOut] - Exact output amount in base units.
+ * @property {string} [recipient] - The address that receives the output.
+ * @property {string} fromSymbol - Source token symbol, for messaging.
+ * @property {string} toSymbol - Destination token symbol, for messaging.
+ * @property {string} [toNetwork] - Destination network name, when cross-network.
  */
 
 /**
@@ -34,6 +63,8 @@
  * @property {string} [hash] - The transaction hash (only for get_transaction).
  * @property {'confirmed' | 'final'} [finality] - The finality target to wait for (only for get_transaction).
  * @property {number} [timeout] - The wait time budget in milliseconds (only for get_transaction with finality).
+ * @property {string} [protocol] - Force a specific protocol (only for quote_swap/quote_bridge).
+ * @property {QuoteRequest} [request] - The quote request (only for quote_swap/quote_bridge).
  */
 
 /**
@@ -53,6 +84,9 @@
 /** @typedef {{ valid: boolean }} VerifyMessageResult */
 /** @typedef {{ transaction: unknown }} GetTransactionResult */
 /** @typedef {{ name: string, ttlMs: number, ttlRemaining: number }} WalletStatus */
+/** @typedef {{ protocol: string, reason: string }} SkippedProtocol */
+/** @typedef {{ protocol: string, inputAmount?: string, outputAmount: string, fees: unknown, skipped: SkippedProtocol[] }} QuoteResult */
+/** @typedef {{ protocol: string, result: unknown, skipped: SkippedProtocol[] }} ExecuteResult */
 /** @typedef {{ wallets: WalletStatus[] }} ListWalletsResult */
 /** @typedef {{ unlocked: boolean, wallets: WalletStatus[], pid: number }} StatusResult */
 
