@@ -17,20 +17,29 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
 /**
  * @typedef {Object} ProtocolQuote
  * @property {string} protocol - The protocol name that produced the quote.
- * @property {bigint} [inputAmount] - The source token spent (base units); computed for exact-out.
+ * @property {bigint} [inputAmount] - The source token spent (base units); always set for exact-out quotes.
  * @property {bigint} outputAmount - The estimated amount of destination token received (base units).
  * @property {unknown} [fees] - The provider's itemised fee breakdown.
  * @property {unknown} raw - The provider's raw quote, for downstream use.
  */
 
 /**
- * Picks the quote with the highest output amount. Ties keep the first, which
- * preserves the order protocols were quoted in.
+ * Picks the best quote for the side the user fixed. Exact-in maximizes the
+ * output received; exact-out minimizes the input spent (every exact-out quote
+ * matches the requested output, so the input is what differs between
+ * protocols). Ties keep the first, which preserves the order protocols were
+ * quoted in.
  *
  * @param {ProtocolQuote[]} quotes - Non-empty list of successful quotes.
+ * @param {'in' | 'out'} [exactSide] - Which side the request fixed (default: 'in').
  * @returns {ProtocolQuote} The best quote.
  */
-export function pickBest (quotes) {
+export function pickBest (quotes, exactSide = 'in') {
+  if (exactSide === 'out') {
+    return quotes.reduce((best, q) => (
+      /** @type {bigint} */ (q.inputAmount) < /** @type {bigint} */ (best.inputAmount) ? q : best
+    ))
+  }
   return quotes.reduce((best, q) => (q.outputAmount > best.outputAmount ? q : best))
 }
 

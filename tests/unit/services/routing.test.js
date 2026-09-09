@@ -33,6 +33,25 @@ describe('pickBest', () => {
 
     expect(pickBest(quotes).protocol).toBe('velora')
   })
+
+  it('picks the lowest input for an exact-out request', () => {
+    const quotes = [
+      { protocol: 'velora', inputAmount: 3010n, outputAmount: 1000n, raw: {} },
+      { protocol: 'rhino', inputAmount: 2990n, outputAmount: 1000n, raw: {} },
+      { protocol: 'symbiosis', inputAmount: 3050n, outputAmount: 1000n, raw: {} }
+    ]
+
+    expect(pickBest(quotes, 'out').protocol).toBe('rhino')
+  })
+
+  it('keeps the first on an exact-out tie', () => {
+    const quotes = [
+      { protocol: 'velora', inputAmount: 3000n, outputAmount: 1000n, raw: {} },
+      { protocol: 'rhino', inputAmount: 3000n, outputAmount: 1000n, raw: {} }
+    ]
+
+    expect(pickBest(quotes, 'out').protocol).toBe('velora')
+  })
 })
 
 describe('buildNoRouteError', () => {

@@ -355,7 +355,7 @@ export async function quoteCandidates ({ account, network, request, context, can
     })
   }
 
-  return { quote: pickBest(quotes), failures }
+  return { quote: pickBest(quotes, request.amountOut !== undefined ? 'out' : 'in'), failures }
 }
 
 /**
