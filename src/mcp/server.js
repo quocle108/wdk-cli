@@ -253,7 +253,7 @@ export async function startMcpServer () {
         network: z.string().describe('Network name (e.g. spark)'),
         name: z.string().describe('Method name (e.g. claimStaticDeposit)'),
         args: z
-          .record(z.string())
+          .record(z.string(), z.string())
           .optional()
           .describe(
             'Method parameters as strings keyed by the declared camelCase name (e.g. {"maxFee": "1000"}, not the kebab-case CLI flag). bigint params take integer strings in base units; a structured param\'s value is a JSON-encoded string.'
