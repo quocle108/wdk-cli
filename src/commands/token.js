@@ -333,7 +333,7 @@ export function registerTokenCommand (program) {
   for (const enabled of [false, true]) {
     const cmd = token
       .command(enabled ? 'enable' : 'disable')
-      .description(`${enabled ? 'Enable' : 'Disable'} a built-in token`)
+      .description(`${enabled ? 'Enable' : 'Disable'} a token`)
       .requiredOption('--network <network>', 'Network the token belongs to')
       .requiredOption('--token <token>', 'Token key (e.g. usdt)')
 

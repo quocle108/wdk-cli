@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { configService } from './config-service.js'
+import { WdkCliError, ErrorCode } from '../errors/index.js'
 
 /** @typedef {'modules' | 'networks' | 'tokens'} OverrideKind */
 
@@ -104,4 +105,32 @@ export function clearOverride (kind, name) {
  */
 export function isDisabled (kind, name) {
   return getOverride(kind, name)?.enabled === false
+}
+
+/**
+ * Applies an enable/disable decision to a registry entry: enabling a name that
+ * only exists in overrides clears the stale entry, and a no-op is rejected so
+ * the caller never reports a change that did not happen.
+ *
+ * @param {OverrideKind} kind - The registry kind.
+ * @param {string} name - The entry name: network name, package name, or token id.
+ * @param {boolean} enabled - The desired state.
+ * @param {boolean} known - Whether the entry exists in the registry.
+ * @param {WdkCliError} unknownError - The error to throw when it does not.
+ * @returns {boolean} True when a stale override was cleared instead.
+ * @throws {WdkCliError} When the entry is unknown or already in the desired state.
+ */
+export function setEnabled (kind, name, enabled, known, unknownError) {
+  if (!known) {
+    if (enabled && getOverride(kind, name)) {
+      clearOverride(kind, name)
+      return true
+    }
+    throw unknownError
+  }
+  if (enabled === !isDisabled(kind, name)) {
+    throw new WdkCliError(`'${name}' is already ${enabled ? 'enabled' : 'disabled'}.`, ErrorCode.INVALID_ARGUMENT)
+  }
+  setOverride(kind, name, { enabled: enabled ? undefined : false })
+  return false
 }

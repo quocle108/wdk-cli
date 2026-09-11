@@ -169,7 +169,7 @@ wdk network list --testnet    # Show only testnets
 wdk network list --mainnet    # Show only mainnets
 wdk network info --network <network>  # Show network details and config
 wdk network delete --name <name>      # Delete a custom network (requires unlocked wallet)
-wdk network disable --name <name>     # Hide a network (built-in or custom)
+wdk network disable --name <name>     # Hide a network
 wdk network enable --name <name>      # Bring it back
 ```
 
@@ -247,7 +247,7 @@ wdk token add '{"network":"ethereum","token":"dai","symbol":"DAI","decimals":18,
 wdk token add ./dai-on-ethereum.json
 
 wdk token delete --network <n> --token <t>                     # Remove a custom entry
-wdk token disable --network <n> --token <t>                    # Hide a built-in entry
+wdk token disable --network <n> --token <t>                    # Hide an entry (built-in or custom)
 wdk token enable --network <n> --token <t>                     # Bring it back
 ```
 

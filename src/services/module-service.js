@@ -17,7 +17,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { walletsFile } from '../config/wdk-config.js'
 import { configService } from './config-service.js'
-import { getOverrides, getOverride, isDisabled, setOverride, clearOverride } from './override-service.js'
+import { getOverrides, getOverride, isDisabled, setEnabled, clearOverride } from './override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
 /** @typedef {import('../config/wdk-config.js').WdkModuleEntry} WdkModuleEntry */
@@ -294,23 +294,18 @@ export function resolveRemoveTarget (name) {
  * @throws {WdkCliError} When the package is unknown or already in the desired state.
  */
 export function setModuleEnabled (name, enabled) {
-  if (!walletsFile.modules?.[name] && !getCustomModules()[name]) {
-    if (enabled && getOverride('modules', name)) {
-      clearOverride('modules', name)
-      return true
-    }
-    const verb = enabled ? 'enable' : 'disable'
-    let suggestion = 'See package names with: wdk module list'
-    if (walletsFile.networks[name]) {
-      suggestion = `'${name}' is a network. Use: wdk network ${verb} --name ${name}`
-    } else if (walletsFile.protocols?.[name]) {
-      suggestion = `'${name}' is a protocol. ${enabled ? 'Enable' : 'Disable'} its module: wdk module ${verb} --name ${walletsFile.protocols[name].module}`
-    }
-    throw new WdkCliError(`'${name}' is not a module.`, ErrorCode.INVALID_ARGUMENT, suggestion)
+  const verb = enabled ? 'enable' : 'disable'
+  let suggestion = 'See package names with: wdk module list'
+  if (walletsFile.networks[name]) {
+    suggestion = `'${name}' is a network. Use: wdk network ${verb} --name ${name}`
+  } else if (walletsFile.protocols?.[name]) {
+    suggestion = `'${name}' is a protocol. ${enabled ? 'Enable' : 'Disable'} its module: wdk module ${verb} --name ${walletsFile.protocols[name].module}`
   }
-  if (enabled === !isDisabled('modules', name)) {
-    throw new WdkCliError(`'${name}' is already ${enabled ? 'enabled' : 'disabled'}.`, ErrorCode.INVALID_ARGUMENT)
-  }
-  setOverride('modules', name, { enabled: enabled ? undefined : false })
-  return false
+  return setEnabled(
+    'modules',
+    name,
+    enabled,
+    Boolean(walletsFile.modules?.[name] || getCustomModules()[name]),
+    new WdkCliError(`'${name}' is not a module.`, ErrorCode.INVALID_ARGUMENT, suggestion)
+  )
 }

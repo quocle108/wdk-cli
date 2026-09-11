@@ -17,7 +17,7 @@ import WdkBaseAssetRegistry, { TokenAssetSchema } from '@tetherto/wdk-asset-regi
 import { tokensFile } from '../config/wdk-tokens.js'
 import { walletsFile } from '../config/wdk-config.js'
 import { configService } from './config-service.js'
-import { getOverrides, getOverride, isDisabled, setOverride, clearOverride } from './override-service.js'
+import { getOverrides, isDisabled, setEnabled, clearOverride } from './override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { humanToBaseUnits } from '../ui/parsers.js'
 
@@ -132,6 +132,10 @@ function toTokenEntry (asset) {
 let cachedRegistry
 /** @type {string | undefined} */
 let cachedCustomSnapshot
+/** @type {CliTokenAssetRegistry | undefined} */
+let cachedFullRegistry
+/** @type {string | undefined} */
+let cachedFullSnapshot
 
 /**
  * Returns the token registry with built-in assets plus the user's custom
@@ -142,7 +146,7 @@ let cachedCustomSnapshot
  * stderr, so one malformed entry cannot break every command.
  *
  * @param {boolean} [includeDisabled] - Include entries the user disabled, for
- *   inspection; such a registry is built fresh and never cached (default: false).
+ *   inspection; cached separately from the usable-only registry (default: false).
  * @returns {CliTokenAssetRegistry}
  */
 function getRegistry (includeDisabled = false) {
@@ -150,7 +154,11 @@ function getRegistry (includeDisabled = false) {
     configService.get('customTokens')
   )
   const snapshot = JSON.stringify([custom ?? null, getOverrides().tokens ?? null])
-  if (!includeDisabled && cachedRegistry && snapshot === cachedCustomSnapshot) return cachedRegistry
+  if (includeDisabled) {
+    if (cachedFullRegistry && snapshot === cachedFullSnapshot) return cachedFullRegistry
+  } else if (cachedRegistry && snapshot === cachedCustomSnapshot) {
+    return cachedRegistry
+  }
 
   const keep = (id) => includeDisabled || !isDisabled('tokens', id)
   const registry = new CliTokenAssetRegistry(tokensFile.assets.filter((a) => keep(a.id)))
@@ -171,7 +179,11 @@ function getRegistry (includeDisabled = false) {
       }
     }
   }
-  if (includeDisabled) return registry
+  if (includeDisabled) {
+    cachedFullRegistry = registry
+    cachedFullSnapshot = snapshot
+    return registry
+  }
   cachedRegistry = registry
   cachedCustomSnapshot = snapshot
   return registry
@@ -472,27 +484,22 @@ export function getDisabledTokens (network) {
 export function setTokenEnabled (network, token, enabled) {
   const id = `${network}/${token.toLowerCase()}`
   const entry = getTokenByName(network, token, { includeDisabled: true })
-  if (!entry) {
-    if (enabled && getOverride('tokens', id)) {
-      clearOverride('tokens', id)
-      return true
-    }
-    throw new WdkCliError(
-      `'${token}' is not registered on '${network}'.`,
-      ErrorCode.TOKEN_NOT_SUPPORTED,
-      `See registered tokens with: wdk token list --network ${network}`
-    )
-  }
-  if (!enabled && entry.isNative) {
+  if (!enabled && entry?.isNative) {
     throw new WdkCliError(
       `'${token}' is the native token of '${network}'.`,
       ErrorCode.INVALID_ARGUMENT,
       `Disable the whole network instead: wdk network disable --name ${network}`
     )
   }
-  if (enabled === !isDisabled('tokens', id)) {
-    throw new WdkCliError(`'${id}' is already ${enabled ? 'enabled' : 'disabled'}.`, ErrorCode.INVALID_ARGUMENT)
-  }
-  setOverride('tokens', id, { enabled: enabled ? undefined : false })
-  return false
+  return setEnabled(
+    'tokens',
+    id,
+    enabled,
+    Boolean(entry),
+    new WdkCliError(
+      `'${token}' is not registered on '${network}'.`,
+      ErrorCode.TOKEN_NOT_SUPPORTED,
+      `See registered tokens with: wdk token list --network ${network}`
+    )
+  )
 }

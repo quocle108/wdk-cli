@@ -293,7 +293,7 @@ export function registerNetworkCommand (program) {
   for (const enabled of [false, true]) {
     const cmd = network
       .command(enabled ? 'enable' : 'disable')
-      .description(`${enabled ? 'Enable' : 'Disable'} a built-in network`)
+      .description(`${enabled ? 'Enable' : 'Disable'} a network`)
       .requiredOption('--name <name>', 'Network name')
 
     configureHelp(cmd, {

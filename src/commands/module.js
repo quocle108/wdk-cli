@@ -224,7 +224,7 @@ export function registerModuleCommand (program) {
     const verb = enabled ? 'enable' : 'disable'
     const cmd = module
       .command(verb)
-      .description(`${enabled ? 'Enable' : 'Disable'} a built-in module package`)
+      .description(`${enabled ? 'Enable' : 'Disable'} a module package`)
       .requiredOption('--name <package>', 'npm package name')
 
     configureHelp(cmd, {

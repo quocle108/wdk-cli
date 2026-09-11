@@ -14,7 +14,7 @@
 
 import { configService } from '../services/config-service.js'
 import { getCustomModules } from '../services/module-service.js'
-import { getOverride, isDisabled, setOverride, clearOverride } from '../services/override-service.js'
+import { getOverride, isDisabled, setEnabled, clearOverride } from '../services/override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { walletsFile } from './wdk-config.js'
 import { getNativeToken } from '../services/token-service.js'
@@ -111,35 +111,19 @@ function networkError (name) {
  * @throws {WdkCliError} When the network is unknown or already in the desired state.
  */
 export function setNetworkEnabled (name, enabled) {
-  if (!(name in NETWORKS) && !(name in readCustomNetworks())) {
-    if (enabled && getOverride('networks', name)) {
-      clearOverride('networks', name)
-      return true
-    }
-    throw new WdkCliError(
+  return setEnabled(
+    'networks',
+    name,
+    enabled,
+    name in NETWORKS || name in readCustomNetworks(),
+    new WdkCliError(
       `'${name}' is not a network.`,
       ErrorCode.NETWORK_NOT_SUPPORTED,
       walletsFile.modules?.[name]
         ? `'${name}' is a module. Use: wdk module ${enabled ? 'enable' : 'disable'} --name ${name}`
         : 'See network names with: wdk network list'
     )
-  }
-  if (enabled === !isDisabled('networks', name)) {
-    throw new WdkCliError(`'${name}' is already ${enabled ? 'enabled' : 'disabled'}.`, ErrorCode.INVALID_ARGUMENT)
-  }
-  setOverride('networks', name, { enabled: enabled ? undefined : false })
-  return false
-}
-
-/**
- * Returns the networks currently hidden, whether disabled directly or through
- * their wallet module.
- *
- * @returns {string[]} The hidden network names, built-in first.
- */
-export function getDisabledNetworks () {
-  const enabled = getAllNetworks()
-  return [...NETWORK_NAMES, ...Object.keys(readCustomNetworks())].filter((name) => !(name in enabled))
+  )
 }
 
 /**

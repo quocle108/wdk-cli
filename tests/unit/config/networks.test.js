@@ -25,7 +25,6 @@ import {
   isBuiltinNetwork,
   getCustomNetworks,
   setNetworkEnabled,
-  getDisabledNetworks,
   isNetworkDisabled,
   saveCustomNetwork,
   deleteCustomNetwork,
@@ -312,12 +311,6 @@ describe('network overrides', () => {
     expect(isNetworkDisabled('nope')).toBe(false)
   })
 
-  it('getDisabledNetworks includes a disabled custom network', () => {
-    withDisabledCustomNetwork()
-
-    expect(getDisabledNetworks()).toEqual(['mychain'])
-  })
-
   it('getNetworkConfig resolves a disabled custom network for inspection', () => {
     withDisabledCustomNetwork()
 
@@ -385,15 +378,6 @@ describe('network overrides', () => {
     expect(isValidNetwork('mychain')).toBe(false)
     expect(isValidNetwork('ethereum')).toBe(false)
     expect(isValidNetwork('bitcoin')).toBe(true)
-  })
-
-  it('reports every hidden network, whether disabled directly or through its module', () => {
-    withOverrides({
-      networks: { tron: { enabled: false } },
-      modules: { '@tetherto/wdk-wallet-solana': { enabled: false } }
-    })
-
-    expect(getDisabledNetworks()).toEqual(['solana', 'solana-testnet', 'solana-devnet', 'tron'])
   })
 
   it('leaves the raw built-in registry untouched', () => {
