@@ -17,6 +17,7 @@ import WdkBaseAssetRegistry, { TokenAssetSchema } from '@tetherto/wdk-asset-regi
 import { tokensFile } from '../config/wdk-tokens.js'
 import { walletsFile } from '../config/wdk-config.js'
 import { configService } from './config-service.js'
+import { getOverrides, getOverride, isDisabled, setOverride, clearOverride } from './override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { humanToBaseUnits } from '../ui/parsers.js'
 
@@ -146,10 +147,10 @@ function getRegistry () {
   const custom = /** @type {Record<string, Record<string, TokenEntry>> | undefined} */ (
     configService.get('customTokens')
   )
-  const snapshot = custom === undefined ? '' : JSON.stringify(custom)
+  const snapshot = JSON.stringify([custom ?? null, getOverrides().tokens ?? null])
   if (cachedRegistry && snapshot === cachedCustomSnapshot) return cachedRegistry
 
-  const registry = new CliTokenAssetRegistry(tokensFile.assets)
+  const registry = new CliTokenAssetRegistry(tokensFile.assets.filter((a) => !isDisabled('tokens', a.id)))
   if (custom) {
     for (const [network, entries] of Object.entries(custom)) {
       for (const [slug, entry] of Object.entries(entries)) {
@@ -424,4 +425,57 @@ export function toBaseUnits (network, token, decimalAmount) {
     )
   }
   return humanToBaseUnits(decimalAmount, decimals, label)
+}
+
+/**
+ * Returns the ids (`<network>/<slug>`) of built-in tokens the user disabled.
+ *
+ * @param {string} [network] - Restrict the result to one network.
+ * @returns {string[]} The disabled token ids.
+ */
+export function getDisabledTokens (network) {
+  return Object.entries(getOverrides().tokens || {})
+    .filter(([id, o]) => o.enabled === false && (network === undefined || id.startsWith(`${network}/`)))
+    .map(([id]) => id)
+}
+
+/**
+ * Enables or disables a built-in token. Enabling a token that only exists in
+ * overrides clears the stale entry instead.
+ *
+ * @param {string} network - The network name.
+ * @param {string} token - The token key (e.g. "usdt").
+ * @param {boolean} enabled - The desired state.
+ * @returns {boolean} True when a stale override was cleared instead.
+ * @throws {WdkCliError} When the token is not built-in, is the network's native
+ *   token, or is already in the desired state.
+ */
+export function setTokenEnabled (network, token, enabled) {
+  const id = `${network}/${token.toLowerCase()}`
+  const asset = tokensFile.assets.find((a) => a.id === id)
+  if (!asset) {
+    if (enabled && getOverride('tokens', id)) {
+      clearOverride('tokens', id)
+      return true
+    }
+    throw new WdkCliError(
+      `'${token}' is not a built-in token on '${network}'.`,
+      ErrorCode.TOKEN_NOT_SUPPORTED,
+      getTokenByName(network, token)
+        ? `Custom tokens are removed with: wdk token delete --network ${network} --token ${token}`
+        : `See registered tokens with: wdk token list --network ${network}`
+    )
+  }
+  if (!enabled && asset.isNative) {
+    throw new WdkCliError(
+      `'${token}' is the native token of '${network}'.`,
+      ErrorCode.INVALID_ARGUMENT,
+      `Disable the whole network instead: wdk network disable --name ${network}`
+    )
+  }
+  if (enabled === !isDisabled('tokens', id)) {
+    throw new WdkCliError(`'${id}' is already ${enabled ? 'enabled' : 'disabled'}.`, ErrorCode.INVALID_ARGUMENT)
+  }
+  setOverride('tokens', id, { enabled: enabled ? undefined : false })
+  return false
 }

@@ -20,8 +20,11 @@ import {
   isCustomNetwork,
   isValidNetwork,
   saveCustomNetwork,
-  deleteCustomNetwork
+  deleteCustomNetwork,
+  setNetworkEnabled,
+  getDisabledNetworks
 } from '../config/networks.js'
+import { applyToggle } from '../ui/toggle.js'
 import { listNetworks, validateNetworkSpec } from '../actions/networks.js'
 import { configService } from '../services/config-service.js'
 import { createTable } from '../ui/tables.js'
@@ -60,9 +63,10 @@ export function registerNetworkCommand (program) {
   listCmd.action((options) => {
     try {
       const result = listNetworks({ testnet: options.testnet, mainnet: options.mainnet })
+      const disabled = getDisabledNetworks()
 
       if (program.opts().json) {
-        console.log(JSON.stringify(result))
+        console.log(JSON.stringify({ ...result, disabled }))
         return
       }
 
@@ -81,6 +85,9 @@ export function registerNetworkCommand (program) {
 
       console.log(table.toString())
       console.log(chalk.dim(`\n  ${result.count} networks available`))
+      if (disabled.length > 0) {
+        console.log(chalk.yellow(`  Disabled: ${disabled.join(', ')}`))
+      }
     } catch (error) {
       handleError(error, program.opts().verbose, program.opts().json)
     }
@@ -276,4 +283,28 @@ export function registerNetworkCommand (program) {
       handleError(error, program.opts().verbose, program.opts().json)
     }
   })
+
+  for (const enabled of [false, true]) {
+    const cmd = network
+      .command(enabled ? 'enable' : 'disable')
+      .description(`${enabled ? 'Enable' : 'Disable'} a built-in network`)
+      .requiredOption('--name <name>', 'Network name')
+
+    configureHelp(cmd, {
+      params: [{ flags: '--name <name>', description: 'Network name', required: true }]
+    })
+
+    cmd.action(async (options) => {
+      try {
+        await applyToggle(program, {
+          apply: () => setNetworkEnabled(options.name, enabled),
+          enabled,
+          label: `Network '${options.name}'`,
+          result: { network: options.name }
+        })
+      } catch (error) {
+        handleError(error, program.opts().verbose, program.opts().json)
+      }
+    })
+  }
 }

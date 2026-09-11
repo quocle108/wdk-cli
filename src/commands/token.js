@@ -21,7 +21,8 @@ import {
   validateTokenSpec,
   validateTokenName
 } from '../actions/token.js'
-import { getTokenSource } from '../services/token-service.js'
+import { getTokenSource, setTokenEnabled, getDisabledTokens } from '../services/token-service.js'
+import { applyToggle } from '../ui/toggle.js'
 import { validateNetwork } from '../config/networks.js'
 import { WdkCliError, ErrorCode, handleError } from '../errors/index.js'
 import { configureHelp } from '../ui/help.js'
@@ -140,6 +141,18 @@ function printCombinedTable (byNetwork) {
  * @param {Command} program - The root Commander program instance.
  * @returns {void}
  */
+/**
+ * Prints the built-in tokens the user disabled, if any.
+ *
+ * @param {string[]} disabled - Disabled token ids (`<network>/<slug>`).
+ * @returns {void}
+ */
+function printDisabled (disabled) {
+  if (disabled.length > 0) {
+    console.log(chalk.yellow(`\n  Disabled: ${disabled.join(', ')}`))
+  }
+}
+
 export function registerTokenCommand (program) {
   const token = program.command('token').description('Manage token registry entries')
 
@@ -158,24 +171,28 @@ export function registerTokenCommand (program) {
   listCmd.action((options) => {
     try {
       const result = listTokens({ network: options.network })
+      const disabled = getDisabledTokens(options.network)
 
       if (program.opts().json) {
-        console.log(JSON.stringify(result))
+        console.log(JSON.stringify({ ...result, disabled }))
         return
       }
 
       if ('network' in result) {
         if (Object.keys(result.tokens).length === 0) {
           console.log(chalk.yellow(`No tokens registered for '${result.network}'.`))
+          printDisabled(disabled)
           return
         }
         printSingleNetworkTable(result.network, result.tokens)
+        printDisabled(disabled)
         console.log()
         return
       }
 
       const { totalNetworks, totalTokens } = printCombinedTable(result.tokens)
       console.log(chalk.dim(`\n  ${totalTokens} tokens across ${totalNetworks} networks`))
+      printDisabled(disabled)
       console.log()
     } catch (error) {
       handleError(error, program.opts().verbose, program.opts().json)
@@ -310,4 +327,33 @@ export function registerTokenCommand (program) {
       handleError(error, program.opts().verbose, program.opts().json)
     }
   })
+
+  for (const enabled of [false, true]) {
+    const cmd = token
+      .command(enabled ? 'enable' : 'disable')
+      .description(`${enabled ? 'Enable' : 'Disable'} a built-in token`)
+      .requiredOption('--network <network>', 'Network the token belongs to')
+      .requiredOption('--token <token>', 'Token key (e.g. usdt)')
+
+    configureHelp(cmd, {
+      params: [
+        { flags: '--network <network>', description: 'Network the token belongs to', required: true },
+        { flags: '--token <token>', description: 'Token key (e.g. usdt)', required: true }
+      ]
+    })
+
+    cmd.action(async (options) => {
+      try {
+        const { network, token: name } = options
+        await applyToggle(program, {
+          apply: () => setTokenEnabled(network, name, enabled),
+          enabled,
+          label: `Token '${network}/${name.toLowerCase()}'`,
+          result: { network, token: name.toLowerCase() }
+        })
+      } catch (error) {
+        handleError(error, program.opts().verbose, program.opts().json)
+      }
+    })
+  }
 }

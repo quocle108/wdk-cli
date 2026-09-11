@@ -17,6 +17,7 @@ import {
   getAllTokens,
   getTokensForNetwork,
   getTokenByName,
+  getDisabledTokens,
   isBuiltinToken,
   saveCustomToken,
   deleteCustomToken
@@ -239,16 +240,18 @@ export function listTokens (input = {}) {
  * @param {GetTokenInput} input
  * @returns {GetTokenResult}
  * @throws {WdkCliError} NETWORK_NOT_SUPPORTED when the network is unknown.
- * @throws {WdkCliError} TOKEN_NOT_SUPPORTED when no entry matches the ticker on that network.
+ * @throws {WdkCliError} TOKEN_NOT_SUPPORTED when no entry matches the ticker on that network, or the user disabled it.
  */
 export function getToken (input) {
   validateNetwork(input.network)
   validateTokenName(input.token)
   const entry = getTokenByName(input.network, input.token)
   if (!entry) {
+    const disabled = getDisabledTokens(input.network).includes(`${input.network}/${input.token.toLowerCase()}`)
     throw new WdkCliError(
-      `Token '${input.token}' not found on '${input.network}'.`,
-      ErrorCode.TOKEN_NOT_SUPPORTED
+      `Token '${input.token}' ${disabled ? 'is disabled' : 'not found'} on '${input.network}'.`,
+      ErrorCode.TOKEN_NOT_SUPPORTED,
+      disabled ? `Enable it with: wdk token enable --network ${input.network} --token ${input.token}` : undefined
     )
   }
   return { network: input.network, token: input.token, ...entry }
