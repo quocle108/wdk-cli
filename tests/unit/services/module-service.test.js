@@ -175,6 +175,32 @@ describe('module overrides', () => {
     expect(modules[EVM]).toEqual({ ...catalog.modules[EVM], version: '9.9.9' })
   })
 
+  const withDisabledCustomModule = () => {
+    getConfig.mockImplementation((key) => {
+      if (key === 'customModules') return { [CUSTOM_MODULE]: CUSTOM_ENTRY }
+      if (key === 'overrides') return { modules: { [CUSTOM_MODULE]: { enabled: false } } }
+      return undefined
+    })
+  }
+
+  it('getAllModules drops a disabled custom module', () => {
+    withDisabledCustomModule()
+
+    expect(getAllModules()[CUSTOM_MODULE]).toBeUndefined()
+  })
+
+  it('getModuleStatuses reports a disabled custom module', () => {
+    withDisabledCustomModule()
+
+    expect(getModuleStatuses().find((s) => s.module === CUSTOM_MODULE)).toEqual({
+      module: CUSTOM_MODULE,
+      pinned: CUSTOM_ENTRY.version,
+      installed: null,
+      status: 'disabled',
+      source: 'custom'
+    })
+  })
+
   it('getModuleStatuses reports disabled, overridden, and stale entries', () => {
     withOverrides({
       modules: {
@@ -258,20 +284,21 @@ describe('setModuleEnabled', () => {
     expect(() => setModuleEnabled(BUILTIN, true)).toThrow(`'${BUILTIN}' is already enabled.`)
   })
 
-  it('points a custom module at module remove', () => {
+  it('disables a custom module package', () => {
     getConfig.mockImplementation((key) => (key === 'customModules' ? { [CUSTOM_MODULE]: CUSTOM_ENTRY } : undefined))
 
-    expect(() => setModuleEnabled(CUSTOM_MODULE, false)).toThrow(
-      `'${CUSTOM_MODULE}' is not a built-in module.`
-    )
+    expect(setModuleEnabled(CUSTOM_MODULE, false)).toBe(false)
+    expect(setConfig).toHaveBeenCalledWith('overrides', {
+      modules: { [CUSTOM_MODULE]: { enabled: false } }
+    })
   })
 
   it('rejects a network name, since only package names match', () => {
-    expect(() => setModuleEnabled('tron', false)).toThrow("'tron' is not a built-in module.")
+    expect(() => setModuleEnabled('tron', false)).toThrow("'tron' is not a module.")
   })
 
   it('rejects a protocol short name, since only package names match', () => {
-    expect(() => setModuleEnabled('velora', false)).toThrow("'velora' is not a built-in module.")
+    expect(() => setModuleEnabled('velora', false)).toThrow("'velora' is not a module.")
   })
 
   it('clears a stale override on enable', () => {
@@ -284,7 +311,7 @@ describe('setModuleEnabled', () => {
   it('rejects disabling a stale override name', () => {
     withOverrides({ modules: { '@gone/pkg': { version: '1.0.0' } } })
 
-    expect(() => setModuleEnabled('@gone/pkg', false)).toThrow("'@gone/pkg' is not a built-in module.")
+    expect(() => setModuleEnabled('@gone/pkg', false)).toThrow("'@gone/pkg' is not a module.")
   })
 })
 
@@ -312,5 +339,17 @@ describe('removeCustomModule', () => {
     expect(setConfig).toHaveBeenCalledWith('customModules', {
       '@dummy/existing': { version: '1.0.0' }
     })
+  })
+
+  it('clears any override left behind for the removed module', () => {
+    getConfig.mockImplementation((key) => {
+      if (key === 'customModules') return { [CUSTOM_MODULE]: CUSTOM_ENTRY }
+      if (key === 'overrides') return { modules: { [CUSTOM_MODULE]: { enabled: false } } }
+      return undefined
+    })
+
+    removeCustomModule(CUSTOM_MODULE)
+
+    expect(deleteConfig).toHaveBeenCalledWith('overrides')
   })
 })

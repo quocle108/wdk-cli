@@ -48,17 +48,20 @@ export function validateTokenName (value) {
 /**
  * @typedef {Object} ListTokensInput
  * @property {string} [network] - Filter to a single network. Omit for every network.
+ * @property {boolean} [includeDisabled] - When true, also return tokens the user disabled (default: false).
  */
 
 /**
  * @typedef {Object} ListTokensNetworkResult
  * @property {string} network - The network the listing is scoped to.
  * @property {Record<string, TokenEntry>} tokens - Tokens keyed by registry key (lowercased).
+ * @property {string[]} disabled - Ids (`<network>/<slug>`) of the network's disabled tokens.
  */
 
 /**
  * @typedef {Object} ListTokensAllResult
  * @property {Record<string, Record<string, TokenEntry>>} tokens - Tokens keyed first by network, then by registry key.
+ * @property {string[]} disabled - Ids (`<network>/<slug>`) of every disabled token.
  */
 
 /**
@@ -68,8 +71,9 @@ export function validateTokenName (value) {
  */
 
 /**
- * @typedef {{ network: string, token: string } & TokenEntry} GetTokenResult
- *   The matched entry's fields, plus its `network` and `token` key.
+ * @typedef {{ network: string, token: string, enabled: boolean } & TokenEntry} GetTokenResult
+ *   The matched entry's fields, plus its `network`, `token` key, and whether
+ *   the user has it enabled.
  */
 
 /**
@@ -227,11 +231,16 @@ export function validateTokenSpec (data) {
  * @returns {ListTokensNetworkResult | ListTokensAllResult}
  */
 export function listTokens (input = {}) {
+  const { includeDisabled } = input
   if (input.network) {
     validateNetwork(input.network)
-    return { network: input.network, tokens: getTokensForNetwork(input.network) }
+    return {
+      network: input.network,
+      tokens: getTokensForNetwork(input.network, { includeDisabled }),
+      disabled: getDisabledTokens(input.network)
+    }
   }
-  return { tokens: getAllTokens() }
+  return { tokens: getAllTokens({ includeDisabled }), disabled: getDisabledTokens() }
 }
 
 /**
@@ -240,21 +249,20 @@ export function listTokens (input = {}) {
  * @param {GetTokenInput} input
  * @returns {GetTokenResult}
  * @throws {WdkCliError} NETWORK_NOT_SUPPORTED when the network is unknown.
- * @throws {WdkCliError} TOKEN_NOT_SUPPORTED when no entry matches the ticker on that network, or the user disabled it.
+ * @throws {WdkCliError} TOKEN_NOT_SUPPORTED when no entry matches the ticker on that network.
  */
 export function getToken (input) {
   validateNetwork(input.network)
   validateTokenName(input.token)
-  const entry = getTokenByName(input.network, input.token)
+  const entry = getTokenByName(input.network, input.token, { includeDisabled: true })
   if (!entry) {
-    const disabled = getDisabledTokens(input.network).includes(`${input.network}/${input.token.toLowerCase()}`)
     throw new WdkCliError(
-      `Token '${input.token}' ${disabled ? 'is disabled' : 'not found'} on '${input.network}'.`,
-      ErrorCode.TOKEN_NOT_SUPPORTED,
-      disabled ? `Enable it with: wdk token enable --network ${input.network} --token ${input.token}` : undefined
+      `Token '${input.token}' not found on '${input.network}'.`,
+      ErrorCode.TOKEN_NOT_SUPPORTED
     )
   }
-  return { network: input.network, token: input.token, ...entry }
+  const enabled = !getDisabledTokens(input.network).includes(`${input.network}/${input.token.toLowerCase()}`)
+  return { network: input.network, token: input.token, enabled, ...entry }
 }
 
 /**

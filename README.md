@@ -169,11 +169,11 @@ wdk network list --testnet    # Show only testnets
 wdk network list --mainnet    # Show only mainnets
 wdk network info --network <network>  # Show network details and config
 wdk network delete --name <name>      # Delete a custom network (requires unlocked wallet)
-wdk network disable --name <name>     # Hide a built-in network
+wdk network disable --name <name>     # Hide a network (built-in or custom)
 wdk network enable --name <name>      # Bring it back
 ```
 
-`delete` removes a network you created; `disable` hides one the CLI ships (see [Module](#module) for how overrides are stored).
+`delete` permanently removes a network you created; `disable` hides any network reversibly (see [Module](#module) for how overrides are stored).
 
 #### Adding Custom Networks
 
@@ -251,7 +251,7 @@ wdk token disable --network <n> --token <t>                    # Hide a built-in
 wdk token enable --network <n> --token <t>                     # Bring it back
 ```
 
-`wdk token add <data>` takes a single argument — inline JSON or a path to a JSON file. `delete` removes an entry you added; `disable` hides one the CLI ships (native tokens cannot be disabled — disable the network instead).
+`wdk token add <data>` takes a single argument — inline JSON or a path to a JSON file. `delete` permanently removes an entry you added; `disable` hides any entry reversibly (native tokens cannot be disabled — disable the network instead).
 
 **Token entry fields — and why each one is needed:**
 
@@ -412,17 +412,19 @@ wdk module remove --name @tetherto/wdk-wallet-evm          # Restore its default
 
 Built-in modules ship as regular npm dependencies of the CLI — installing the CLI installs them, with no lifecycle scripts. `wdk module add` registers an *additional* package (stored in user config, pinned to an exact version) and installs it; because module code runs inside the wallet daemon, adding or removing one requires the default wallet's passphrase to confirm (set `WDK_PASSPHRASE` for non-interactive use), same as `network create` and `token add`. After adding, the module can back a custom network — `wdk network create '{"network":"ton","module":"@tetherto/wdk-wallet-ton",...}'` — and a running daemon keeps the previously loaded code, so lock and unlock again to pick up module changes.
 
-Built-in entries can be disabled or replaced without touching the package. Each command matches its own registry exactly — `--name` must be a module **package** name here, a **network** name for `wdk network enable|disable`, and `--network` + `--token` for `wdk token enable|disable`:
+Any entry can be disabled — built-in or your own. Each command matches its own registry exactly: `--name` is a module **package** name here, a **network** name for `wdk network enable|disable`, and `--network` + `--token` for `wdk token enable|disable`:
 
 ```bash
 wdk module  disable --name @tetherto/wdk-wallet-tron   # module: hides every network and protocol it backs
-wdk network disable --name tron                        # one built-in network
-wdk token   disable --network ethereum --token usdt    # one built-in token
+wdk network disable --name tron                        # one network
+wdk token   disable --network ethereum --token usdt    # one token
 ```
 
-Protocols have no separate command: a protocol *is* a module (`velora` → `@tetherto/wdk-protocol-swap-velora-evm`), so disabling the package disables the protocol. Native tokens cannot be disabled — disable the network instead. `network delete` and `token delete` remain for entries **you** created; `disable` is for the ones the CLI ships.
+The rule is **everything can be disabled; only entries you created can be deleted** — built-ins ship inside the package, so there is nothing to delete, and `delete` on your own entry also drops any override it had. Disabling is reversible and never hides anything from you: `module list`, `network list`, and `token list` keep showing disabled entries with a `Status` of `disabled` (so you can see what to re-enable), and `network info` / `token info` still print the full entry. Only commands that would *use* the entry fail, with the exact enable command in the hint.
 
-Choices are stored in user config under `overrides` as deltas — only what you changed, never a copy of the defaults — so a CLI upgrade that ships new modules, versions, networks, or tokens applies automatically to everything you have not overridden, with no migration step. Re-enabling deletes the delta, and the key disappears once the last one is gone. Each list shows what is hidden: `wdk module list` marks modules `disabled`, `overridden` with their `(default: …)`, or `stale override` for an entry the catalog no longer ships (harmless; clear it by enabling that name), while `wdk network list` and `wdk token list` print a `Disabled:` line — networks hidden by a disabled module are listed there too. Any enable/disable locks the wallets, like other SDK-affecting config changes — unlock again to apply.
+Protocols have no separate command: a protocol *is* a module (`velora` → `@tetherto/wdk-protocol-swap-velora-evm`), so disabling the package disables the protocol. Native tokens cannot be disabled — disable the network instead.
+
+Choices are stored in user config under `overrides` as deltas — only what you changed, never a copy of the defaults — so a CLI upgrade that ships new modules, versions, networks, or tokens applies automatically to everything you have not overridden, with no migration step. Re-enabling deletes the delta, and the key disappears once the last one is gone. `wdk module list` also marks a module `overridden` with its `(default: …)` version, or `stale override` for an entry the catalog no longer ships (harmless; clear it by enabling that name). In `wdk network list`, networks hidden by a disabled *module* are marked `disabled` too. `--json` output carries the state directly: networks gain an `enabled` field, and token listings include a `disabled` array of `<network>/<token>` ids. The MCP server lists only usable entries, so agents are never offered a disabled network or token. Any enable/disable locks the wallets, like other SDK-affecting config changes — unlock again to apply.
 
 Custom modules are not package.json dependencies, so a plain `npm install` prunes them from `node_modules`. `wdk module list` shows them as `not installed`; re-running `wdk module add --name <pkg>` reinstalls them at their registered pin.
 

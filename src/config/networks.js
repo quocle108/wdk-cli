@@ -90,18 +90,20 @@ function getEnabledBuiltinNetworks () {
  * @returns {WdkCliError} The error to throw.
  */
 function networkError (name) {
-  if (name in NETWORKS) {
+  if (isNetworkDisabled(name)) {
+    const module = getOverride('networks', name)?.module ??
+      (NETWORKS[name] ?? readCustomNetworks()[name]).module
     const suggestion = isDisabled('networks', name)
       ? `Enable it with: wdk network enable --name ${name}`
-      : `Enable its module with: wdk module enable --name ${getOverride('networks', name)?.module ?? NETWORKS[name].module}`
+      : `Enable its module with: wdk module enable --name ${module}`
     return new WdkCliError(`Network '${name}' is disabled.`, ErrorCode.NETWORK_NOT_SUPPORTED, suggestion)
   }
   return new WdkCliError(`Network '${name}' is not supported.`, ErrorCode.NETWORK_NOT_SUPPORTED)
 }
 
 /**
- * Enables or disables a built-in network. Enabling a name that only exists in
- * overrides clears the stale entry instead.
+ * Enables or disables a network, built-in or custom. Enabling a name that only
+ * exists in overrides clears the stale entry instead.
  *
  * @param {string} name - The network name.
  * @param {boolean} enabled - The desired state.
@@ -109,18 +111,18 @@ function networkError (name) {
  * @throws {WdkCliError} When the network is unknown or already in the desired state.
  */
 export function setNetworkEnabled (name, enabled) {
-  if (!(name in NETWORKS)) {
+  if (!(name in NETWORKS) && !(name in readCustomNetworks())) {
     if (enabled && getOverride('networks', name)) {
       clearOverride('networks', name)
       return true
     }
-    let suggestion = 'See built-in names with: wdk network list'
-    if (name in getCustomNetworks()) {
-      suggestion = `Custom networks are removed with: wdk network delete --name ${name}`
-    } else if (walletsFile.modules?.[name]) {
-      suggestion = `'${name}' is a module. Use: wdk module ${enabled ? 'enable' : 'disable'} --name ${name}`
-    }
-    throw new WdkCliError(`'${name}' is not a built-in network.`, ErrorCode.NETWORK_NOT_SUPPORTED, suggestion)
+    throw new WdkCliError(
+      `'${name}' is not a network.`,
+      ErrorCode.NETWORK_NOT_SUPPORTED,
+      walletsFile.modules?.[name]
+        ? `'${name}' is a module. Use: wdk module ${enabled ? 'enable' : 'disable'} --name ${name}`
+        : 'See network names with: wdk network list'
+    )
   }
   if (enabled === !isDisabled('networks', name)) {
     throw new WdkCliError(`'${name}' is already ${enabled ? 'enabled' : 'disabled'}.`, ErrorCode.INVALID_ARGUMENT)
@@ -130,14 +132,14 @@ export function setNetworkEnabled (name, enabled) {
 }
 
 /**
- * Returns the built-in networks currently hidden, whether disabled directly or
- * through their wallet module.
+ * Returns the networks currently hidden, whether disabled directly or through
+ * their wallet module.
  *
- * @returns {string[]} The hidden network names, in catalog order.
+ * @returns {string[]} The hidden network names, built-in first.
  */
 export function getDisabledNetworks () {
-  const enabled = getEnabledBuiltinNetworks()
-  return NETWORK_NAMES.filter((name) => !(name in enabled))
+  const enabled = getAllNetworks()
+  return [...NETWORK_NAMES, ...Object.keys(readCustomNetworks())].filter((name) => !(name in enabled))
 }
 
 /**
@@ -157,17 +159,17 @@ export function getValidWalletTypes () {
 }
 
 /**
- * Returns all user-defined custom networks from config, each marked with `custom: true`.
+ * Returns every user-defined custom network from config, disabled ones included,
+ * each marked with `custom: true`.
  *
  * @returns {Record<string, NetworkConfig>} Map of custom network name to config.
  */
-export function getCustomNetworks () {
+function readCustomNetworks () {
   const custom = configService.get('customNetworks')
   if (!custom || typeof custom !== 'object') return {}
   /** @type {Record<string, NetworkConfig>} */
   const result = {}
   for (const [name, config] of Object.entries(custom)) {
-    if (isDisabled('modules', config.module)) continue
     const native = getNativeToken(name)
     result[name] = {
       ...config,
@@ -180,12 +182,34 @@ export function getCustomNetworks () {
 }
 
 /**
+ * Returns the enabled custom networks: entries the user disabled, or whose
+ * wallet module is disabled, are dropped.
+ *
+ * @returns {Record<string, NetworkConfig>} Map of custom network name to config.
+ */
+export function getCustomNetworks () {
+  return Object.fromEntries(
+    Object.entries(readCustomNetworks())
+      .filter(([name, config]) => !isDisabled('networks', name) && !isDisabled('modules', config.module))
+  )
+}
+
+/**
  * Returns all networks, merging built-in and custom networks.
  *
  * @returns {Record<string, NetworkConfig>} Combined map of all network configs.
  */
 export function getAllNetworks () {
   return { ...getEnabledBuiltinNetworks(), ...getCustomNetworks() }
+}
+
+/**
+ * Returns every network, disabled ones included, for listings that show state.
+ *
+ * @returns {Record<string, NetworkConfig>} Combined map of all network configs.
+ */
+export function getAllNetworksIncludingDisabled () {
+  return { ...NETWORKS, ...readCustomNetworks() }
 }
 
 /**
@@ -208,16 +232,35 @@ export function isBuiltinNetwork (name) {
 }
 
 /**
+ * @typedef {Object} GetNetworkConfigOptions
+ * @property {boolean} [includeDisabled] - Resolve entries the user disabled, for inspection (default: false).
+ */
+
+/**
  * Returns the config for a network by name, throwing if not found.
  *
  * @param {string} name - Network name.
+ * @param {GetNetworkConfigOptions} [options] - Resolution options.
  * @returns {NetworkConfig} The network configuration.
+ * @throws {WdkCliError} NETWORK_NOT_SUPPORTED when the network is unknown or disabled.
  */
-export function getNetworkConfig (name) {
-  const all = getAllNetworks()
+export function getNetworkConfig (name, options = {}) {
+  const all = options.includeDisabled ? getAllNetworksIncludingDisabled() : getAllNetworks()
   const config = all[name]
   if (!config) { throw networkError(name) }
   return config
+}
+
+/**
+ * Returns whether a network exists but is currently hidden, directly or through
+ * its wallet module.
+ *
+ * @param {string} name - Network name.
+ * @returns {boolean} True when the network is disabled.
+ */
+export function isNetworkDisabled (name) {
+  const known = name in NETWORKS || name in readCustomNetworks()
+  return known && !(name in getAllNetworks())
 }
 
 /**
@@ -260,13 +303,14 @@ export function isTestnet (name) {
 }
 
 /**
- * Returns whether a network is a user-defined custom network.
+ * Returns whether a network is a user-defined custom network, disabled ones
+ * included, so they stay manageable.
  *
  * @param {string} name - Network name to check.
  * @returns {boolean} True if the network is custom.
  */
 export function isCustomNetwork (name) {
-  return name in getCustomNetworks()
+  return name in readCustomNetworks()
 }
 
 /**
@@ -288,6 +332,7 @@ export function saveCustomNetwork (name, config) {
  */
 export function deleteCustomNetwork (name) {
   configService.delete(`customNetworks.${name}`)
+  clearOverride('networks', name)
 }
 
 /**

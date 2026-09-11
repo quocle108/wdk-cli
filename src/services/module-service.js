@@ -77,21 +77,24 @@ export function getCustomModules () {
 }
 
 /**
- * Returns all modules, merging built-in catalog modules and user-added ones.
- * Built-in entries win on name collision. Disabled built-ins are dropped and
- * version overrides applied.
+ * Returns all enabled modules, merging built-in catalog modules and user-added
+ * ones. Built-in entries win on name collision, disabled entries are dropped,
+ * and version overrides applied.
  *
  * @returns {Record<string, WdkModuleEntry>} Module entries keyed by package name.
  */
 export function getAllModules () {
   /** @type {Record<string, WdkModuleEntry>} */
-  const builtIn = {}
+  const modules = {}
+  for (const [name, entry] of Object.entries(getCustomModules())) {
+    if (!isDisabled('modules', name)) modules[name] = entry
+  }
   for (const [name, entry] of Object.entries(walletsFile.modules || {})) {
     if (isDisabled('modules', name)) continue
     const version = getOverride('modules', name)?.version
-    builtIn[name] = version ? { ...entry, version } : entry
+    modules[name] = version ? { ...entry, version } : entry
   }
-  return { ...getCustomModules(), ...builtIn }
+  return modules
 }
 
 /**
@@ -124,13 +127,13 @@ export function getModuleStatuses () {
   for (const [name, e] of Object.entries(custom)) {
     if (name in builtIn) continue
     const installed = getInstalledVersion(name)
-    const status = installed === null
-      ? 'not installed'
-      : installed === e.version ? 'ok' : 'version mismatch'
+    const status = overrides[name]?.enabled === false
+      ? 'disabled'
+      : installed === null ? 'not installed' : installed === e.version ? 'ok' : 'version mismatch'
     statuses.push({ module: name, pinned: e.version, installed, status, source: 'custom' })
   }
   for (const [name, o] of Object.entries(overrides)) {
-    if (name in builtIn) continue
+    if (name in builtIn || name in custom) continue
     statuses.push({
       module: name,
       pinned: o.version ?? '-',
@@ -248,6 +251,7 @@ export function removeCustomModule (name) {
   const next = { ...custom }
   delete next[name]
   configService.set('customModules', next)
+  clearOverride('modules', name)
 }
 
 /**
@@ -281,8 +285,8 @@ export function resolveRemoveTarget (name) {
 }
 
 /**
- * Enables or disables a built-in module package. Enabling a name that only
- * exists in overrides clears the stale entry instead.
+ * Enables or disables a module package, built-in or custom. Enabling a name
+ * that only exists in overrides clears the stale entry instead.
  *
  * @param {string} name - The module package name.
  * @param {boolean} enabled - The desired state.
@@ -290,21 +294,19 @@ export function resolveRemoveTarget (name) {
  * @throws {WdkCliError} When the package is unknown or already in the desired state.
  */
 export function setModuleEnabled (name, enabled) {
-  if (!walletsFile.modules?.[name]) {
+  if (!walletsFile.modules?.[name] && !getCustomModules()[name]) {
     if (enabled && getOverride('modules', name)) {
       clearOverride('modules', name)
       return true
     }
     const verb = enabled ? 'enable' : 'disable'
     let suggestion = 'See package names with: wdk module list'
-    if (getCustomModules()[name]) {
-      suggestion = `Custom modules are removed with: wdk module remove --name ${name}`
-    } else if (walletsFile.networks[name]) {
+    if (walletsFile.networks[name]) {
       suggestion = `'${name}' is a network. Use: wdk network ${verb} --name ${name}`
     } else if (walletsFile.protocols?.[name]) {
       suggestion = `'${name}' is a protocol. ${enabled ? 'Enable' : 'Disable'} its module: wdk module ${verb} --name ${walletsFile.protocols[name].module}`
     }
-    throw new WdkCliError(`'${name}' is not a built-in module.`, ErrorCode.INVALID_ARGUMENT, suggestion)
+    throw new WdkCliError(`'${name}' is not a module.`, ErrorCode.INVALID_ARGUMENT, suggestion)
   }
   if (enabled === !isDisabled('modules', name)) {
     throw new WdkCliError(`'${name}' is already ${enabled ? 'enabled' : 'disabled'}.`, ErrorCode.INVALID_ARGUMENT)

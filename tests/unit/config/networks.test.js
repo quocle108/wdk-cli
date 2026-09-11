@@ -26,6 +26,7 @@ import {
   getCustomNetworks,
   setNetworkEnabled,
   getDisabledNetworks,
+  isNetworkDisabled,
   saveCustomNetwork,
   deleteCustomNetwork,
   getChainId
@@ -216,6 +217,15 @@ describe('custom networks', () => {
 })
 
 describe('network overrides', () => {
+  const DUMMY_CUSTOM_NETWORK = {
+    name: 'mychain',
+    displayName: 'mychain',
+    type: '@tetherto/wdk-wallet-evm',
+    module: '@tetherto/wdk-wallet-evm',
+    custom: true,
+    testnet: false
+  }
+
   afterEach(() => {
     jest.restoreAllMocks()
   })
@@ -260,14 +270,74 @@ describe('network overrides', () => {
     withOverrides(undefined)
 
     expect(() => setNetworkEnabled('@tetherto/wdk-wallet-tron', false)).toThrow(
-      "'@tetherto/wdk-wallet-tron' is not a built-in network."
+      "'@tetherto/wdk-wallet-tron' is not a network."
     )
   })
 
   it('rejects an unknown name', () => {
     withOverrides(undefined)
 
-    expect(() => setNetworkEnabled('nope', false)).toThrow("'nope' is not a built-in network.")
+    expect(() => setNetworkEnabled('nope', false)).toThrow("'nope' is not a network.")
+  })
+
+  const withDisabledCustomNetwork = () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) => {
+      if (key === 'customNetworks') return { mychain: DUMMY_CUSTOM_NETWORK }
+      if (key === 'overrides') return { networks: { mychain: { enabled: false } } }
+      return undefined
+    })
+  }
+
+  it('disables a custom network', () => {
+    const setMock = jest.spyOn(configService, 'set').mockImplementation(() => {})
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'customNetworks' ? { mychain: DUMMY_CUSTOM_NETWORK } : undefined
+    )
+
+    expect(setNetworkEnabled('mychain', false)).toBe(false)
+    expect(setMock).toHaveBeenCalledWith('overrides', { networks: { mychain: { enabled: false } } })
+  })
+
+  it('isValidNetwork rejects a disabled custom network', () => {
+    withDisabledCustomNetwork()
+
+    expect(isValidNetwork('mychain')).toBe(false)
+  })
+
+  it('isNetworkDisabled identifies a disabled custom network', () => {
+    withDisabledCustomNetwork()
+
+    expect(isNetworkDisabled('mychain')).toBe(true)
+    expect(isNetworkDisabled('ethereum')).toBe(false)
+    expect(isNetworkDisabled('nope')).toBe(false)
+  })
+
+  it('getDisabledNetworks includes a disabled custom network', () => {
+    withDisabledCustomNetwork()
+
+    expect(getDisabledNetworks()).toEqual(['mychain'])
+  })
+
+  it('getNetworkConfig resolves a disabled custom network for inspection', () => {
+    withDisabledCustomNetwork()
+
+    expect(getNetworkConfig('mychain', { includeDisabled: true })).toEqual({
+      ...DUMMY_CUSTOM_NETWORK,
+      nativeSymbol: undefined,
+      decimals: undefined
+    })
+  })
+
+  it('clears the override when the custom network is deleted', () => {
+    const deleteMock = jest.spyOn(configService, 'delete').mockImplementation(() => {})
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'overrides' ? { networks: { mychain: { enabled: false } } } : undefined
+    )
+
+    deleteCustomNetwork('mychain')
+
+    expect(deleteMock).toHaveBeenCalledWith('customNetworks.mychain')
+    expect(deleteMock).toHaveBeenCalledWith('overrides')
   })
 
   it('clears a stale override on enable', () => {

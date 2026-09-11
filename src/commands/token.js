@@ -21,7 +21,7 @@ import {
   validateTokenSpec,
   validateTokenName
 } from '../actions/token.js'
-import { getTokenSource, setTokenEnabled, getDisabledTokens } from '../services/token-service.js'
+import { getTokenSource, setTokenEnabled } from '../services/token-service.js'
 import { applyToggle } from '../ui/toggle.js'
 import { validateNetwork } from '../config/networks.js'
 import { WdkCliError, ErrorCode, handleError } from '../errors/index.js'
@@ -78,7 +78,7 @@ function tokenRow (network, token, entry) {
     entry.metadata?.indexerSlug ?? chalk.dim('—'),
     entry.metadata?.moonpaySlug ?? chalk.dim('—'),
     entry.metadata?.bitfinexSlug ?? chalk.dim('—'),
-    source === 'custom' ? chalk.yellow('custom') : chalk.dim('built-in')
+    source === 'custom' ? 'custom' : chalk.dim('built-in')
   ]
 }
 
@@ -91,7 +91,8 @@ const COMMON_COLUMNS = [
   'Indexer',
   'MoonPay',
   'Bitfinex',
-  'Source'
+  'Source',
+  'Status'
 ]
 
 /**
@@ -99,14 +100,15 @@ const COMMON_COLUMNS = [
  *
  * @param {string} network
  * @param {Record<string, TokenEntry>} tokens
+ * @param {string[]} disabled - Ids (`<network>/<slug>`) of disabled tokens.
  * @returns {void}
  */
-function printSingleNetworkTable (network, tokens) {
+function printSingleNetworkTable (network, tokens, disabled) {
   console.log()
   console.log(chalk.bold(`  ${network}:`))
   const table = createTable(COMMON_COLUMNS)
   for (const [token, entry] of Object.entries(tokens)) {
-    table.push(tokenRow(network, token, entry))
+    table.push([...tokenRow(network, token, entry), statusCell(network, token, disabled)])
   }
   console.log(table.toString())
 }
@@ -116,9 +118,10 @@ function printSingleNetworkTable (network, tokens) {
  * the same widths. Network is the leading column.
  *
  * @param {Record<string, Record<string, TokenEntry>>} byNetwork
+ * @param {string[]} disabled - Ids (`<network>/<slug>`) of disabled tokens.
  * @returns {{ totalNetworks: number, totalTokens: number }}
  */
-function printCombinedTable (byNetwork) {
+function printCombinedTable (byNetwork, disabled) {
   console.log()
   const table = createTable(['Network', ...COMMON_COLUMNS])
   let totalNetworks = 0
@@ -127,8 +130,8 @@ function printCombinedTable (byNetwork) {
     if (Object.keys(tokens).length === 0) continue
     totalNetworks++
     for (const [token, entry] of Object.entries(tokens)) {
-      totalTokens++
-      table.push([chalk.dim(network), ...tokenRow(network, token, entry)])
+      if (!disabled.includes(`${network}/${token}`)) totalTokens++
+      table.push([chalk.dim(network), ...tokenRow(network, token, entry), statusCell(network, token, disabled)])
     }
   }
   console.log(table.toString())
@@ -142,15 +145,15 @@ function printCombinedTable (byNetwork) {
  * @returns {void}
  */
 /**
- * Prints the built-in tokens the user disabled, if any.
+ * Renders a token's status cell: empty when usable, `disabled` otherwise.
  *
- * @param {string[]} disabled - Disabled token ids (`<network>/<slug>`).
- * @returns {void}
+ * @param {string} network - The network the token belongs to.
+ * @param {string} token - The token key.
+ * @param {string[]} disabled - Ids (`<network>/<slug>`) of disabled tokens.
+ * @returns {string} `disabled` when the user disabled the token, otherwise an empty cell.
  */
-function printDisabled (disabled) {
-  if (disabled.length > 0) {
-    console.log(chalk.yellow(`\n  Disabled: ${disabled.join(', ')}`))
-  }
+function statusCell (network, token, disabled) {
+  return disabled.includes(`${network}/${token}`) ? chalk.dim('disabled') : ''
 }
 
 export function registerTokenCommand (program) {
@@ -170,29 +173,25 @@ export function registerTokenCommand (program) {
 
   listCmd.action((options) => {
     try {
-      const result = listTokens({ network: options.network })
-      const disabled = getDisabledTokens(options.network)
+      const result = listTokens({ network: options.network, includeDisabled: true })
 
       if (program.opts().json) {
-        console.log(JSON.stringify({ ...result, disabled }))
+        console.log(JSON.stringify(result))
         return
       }
 
       if ('network' in result) {
         if (Object.keys(result.tokens).length === 0) {
           console.log(chalk.yellow(`No tokens registered for '${result.network}'.`))
-          printDisabled(disabled)
           return
         }
-        printSingleNetworkTable(result.network, result.tokens)
-        printDisabled(disabled)
+        printSingleNetworkTable(result.network, result.tokens, result.disabled)
         console.log()
         return
       }
 
-      const { totalNetworks, totalTokens } = printCombinedTable(result.tokens)
+      const { totalNetworks, totalTokens } = printCombinedTable(result.tokens, result.disabled)
       console.log(chalk.dim(`\n  ${totalTokens} tokens across ${totalNetworks} networks`))
-      printDisabled(disabled)
       console.log()
     } catch (error) {
       handleError(error, program.opts().verbose, program.opts().json)
@@ -223,8 +222,11 @@ export function registerTokenCommand (program) {
       }
       console.log()
       console.log(chalk.bold(`  ${result.network}:`))
-      const { network: _n, token, ...entry } = result
+      const { network: _n, token, enabled, ...entry } = result
       printTokenEntry(/** @type {TokenEntry} */ (entry), token)
+      if (!enabled) {
+        console.log(`    Status:   ${chalk.dim('disabled')}`)
+      }
       console.log()
     } catch (error) {
       handleError(error, program.opts().verbose, program.opts().json)

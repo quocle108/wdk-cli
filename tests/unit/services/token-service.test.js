@@ -327,10 +327,33 @@ describe('token overrides', () => {
     )
   })
 
-  it('refuses a token that is not built-in', () => {
+  it('refuses a token that is not registered', () => {
     expect(() => setTokenEnabled('ethereum', 'nope', false)).toThrow(
-      "'nope' is not a built-in token on 'ethereum'."
+      "'nope' is not registered on 'ethereum'."
     )
+  })
+
+  it('disables a custom token', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+
+    expect(setTokenEnabled('ethereum', 'mytok', false)).toBe(false)
+    expect(store.overrides).toEqual({ tokens: { 'ethereum/mytok': { enabled: false } } })
+  })
+
+  it('hides a disabled custom token but still resolves it for inspection', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+    store.overrides = { tokens: { 'ethereum/mytok': { enabled: false } } }
+
+    expect(getTokenByName('ethereum', 'mytok')).toBeUndefined()
+    expect(getTokenByName('ethereum', 'mytok', { includeDisabled: true })).toEqual(CUSTOM_ENTRY)
+  })
+
+  it('clears the override when the custom token is deleted', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+    store.overrides = { tokens: { 'ethereum/mytok': { enabled: false } } }
+
+    expect(deleteCustomToken('ethereum', 'mytok')).toBe(true)
+    expect(store.overrides).toBeUndefined()
   })
 
   it('rejects a token already in the desired state', () => {

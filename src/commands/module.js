@@ -71,6 +71,20 @@ function runNpm (args, { capture = false, quiet = false } = {}) {
 }
 
 /**
+ * Colors a module's status: dim when it is an inactive state the user chose,
+ * yellow when it needs attention, plain otherwise.
+ *
+ * @param {string} status - The raw status value.
+ * @param {string} label - The status text to render (may carry a default-version suffix).
+ * @returns {string} The status text, colored by how much attention it needs.
+ */
+function statusCell (status, label) {
+  if (status === 'disabled') return chalk.dim(label)
+  if (status === 'stale override') return chalk.yellow(label)
+  return label
+}
+
+/**
  * Registers the `module` command group (list, add, remove, enable, disable) on the root program.
  *
  * @param {Command} program - The root Commander program instance.
@@ -96,7 +110,13 @@ export function registerModuleCommand (program) {
       const table = createTable(['Module', 'Pinned', 'Installed', 'Status', 'Source'])
       for (const s of modules) {
         const status = s.defaultVersion ? `${s.status} (default: ${s.defaultVersion})` : s.status
-        table.push([s.module, s.pinned, s.installed ?? '-', status, s.source])
+        table.push([
+          chalk.bold(s.module),
+          s.pinned,
+          s.installed ?? '-',
+          statusCell(s.status, status),
+          s.source
+        ])
       }
       console.log(table.toString())
       console.log()

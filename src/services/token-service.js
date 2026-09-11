@@ -141,19 +141,23 @@ let cachedCustomSnapshot
  * Custom entries that fail schema validation are skipped with a warning on
  * stderr, so one malformed entry cannot break every command.
  *
+ * @param {boolean} [includeDisabled] - Include entries the user disabled, for
+ *   inspection; such a registry is built fresh and never cached (default: false).
  * @returns {CliTokenAssetRegistry}
  */
-function getRegistry () {
+function getRegistry (includeDisabled = false) {
   const custom = /** @type {Record<string, Record<string, TokenEntry>> | undefined} */ (
     configService.get('customTokens')
   )
   const snapshot = JSON.stringify([custom ?? null, getOverrides().tokens ?? null])
-  if (cachedRegistry && snapshot === cachedCustomSnapshot) return cachedRegistry
+  if (!includeDisabled && cachedRegistry && snapshot === cachedCustomSnapshot) return cachedRegistry
 
-  const registry = new CliTokenAssetRegistry(tokensFile.assets.filter((a) => !isDisabled('tokens', a.id)))
+  const keep = (id) => includeDisabled || !isDisabled('tokens', id)
+  const registry = new CliTokenAssetRegistry(tokensFile.assets.filter((a) => keep(a.id)))
   if (custom) {
     for (const [network, entries] of Object.entries(custom)) {
       for (const [slug, entry] of Object.entries(entries)) {
+        if (!keep(`${network}/${slug}`)) continue
         try {
           registry.registerAsset(customEntryToAsset(network, slug, entry), true)
         } catch (error) {
@@ -167,6 +171,7 @@ function getRegistry () {
       }
     }
   }
+  if (includeDisabled) return registry
   cachedRegistry = registry
   cachedCustomSnapshot = snapshot
   return registry
@@ -175,22 +180,29 @@ function getRegistry () {
 /**
  * Returns all assets registered for a network, built-in and custom merged.
  *
- * @param {string} network
+ * @param {string} network - The network name.
+ * @param {boolean} [includeDisabled] - Include entries the user disabled (default: false).
  * @returns {CliTokenAsset[]}
  */
-function assetsForNetwork (network) {
-  return getRegistry().getAsset([{ network }])
+function assetsForNetwork (network, includeDisabled = false) {
+  return getRegistry(includeDisabled).getAsset([{ network }])
 }
+
+/**
+ * @typedef {Object} TokenLookupOptions
+ * @property {boolean} [includeDisabled] - Resolve entries the user disabled, for inspection (default: false).
+ */
 
 /**
  * Resolves a token by its registry token (case-insensitive).
  *
  * @param {string} network - The network name.
  * @param {string} token - The token (e.g. "usdt").
+ * @param {TokenLookupOptions} [options] - Resolution options.
  * @returns {TokenEntry | undefined} The token entry, or undefined if not registered.
  */
-export function getTokenByName (network, token) {
-  const asset = getRegistry().getAssetById(`${network}/${token.toLowerCase()}`)
+export function getTokenByName (network, token, options = {}) {
+  const asset = getRegistry(options.includeDisabled).getAssetById(`${network}/${token.toLowerCase()}`)
   return asset ? toTokenEntry(asset) : undefined
 }
 
@@ -212,10 +224,13 @@ export function getTokenByAddress (network, address) {
  * Returns all tokens (built-in + custom merged) for the given network.
  *
  * @param {string} network - The network name.
+ * @param {TokenLookupOptions} [options] - Resolution options.
  * @returns {Record<string, TokenEntry>} Token entries keyed by token.
  */
-export function getTokensForNetwork (network) {
-  return Object.fromEntries(assetsForNetwork(network).map((a) => [a.slug, toTokenEntry(a)]))
+export function getTokensForNetwork (network, options = {}) {
+  return Object.fromEntries(
+    assetsForNetwork(network, options.includeDisabled).map((a) => [a.slug, toTokenEntry(a)])
+  )
 }
 
 /**
@@ -285,18 +300,18 @@ export function getNativeToken (network) {
  *
  * @returns {Record<string, Record<string, TokenEntry>>}
  */
-export function getAllTokens () {
+export function getAllTokens (options = {}) {
   /** @type {Record<string, Record<string, TokenEntry>>} */
   const result = {}
   for (const network of BUILTIN_NETWORKS) {
-    result[network] = getTokensForNetwork(network)
+    result[network] = getTokensForNetwork(network, options)
   }
   const customAll = /** @type {Record<string, Record<string, TokenEntry>> | undefined} */ (
     configService.get('customTokens')
   )
   if (customAll) {
     for (const network of Object.keys(customAll)) {
-      if (!result[network]) result[network] = getTokensForNetwork(network)
+      if (!result[network]) result[network] = getTokensForNetwork(network, options)
     }
   }
   return result
@@ -347,16 +362,19 @@ export function getTokenSource (network, token) {
  * @param {string} network
  * @param {string} token - The user-supplied token name (e.g. "usdt", "eth").
  * @returns {ResolvedTokenIdentifier}
- * @throws {WdkCliError} When the token is not registered, or when a non-native
- *   token entry has no contract address (e.g. indexer-only entry).
+ * @throws {WdkCliError} When the token is not registered or is disabled, or
+ *   when a non-native token entry has no contract address (e.g. indexer-only entry).
  */
 export function resolveTokenIdentifier (network, token) {
   const hit = getTokenByName(network, token)
   if (!hit) {
+    const disabled = isDisabled('tokens', `${network}/${token.toLowerCase()}`)
     throw new WdkCliError(
-      `Token '${token}' is not registered on '${network}'.`,
+      `Token '${token}' is ${disabled ? 'disabled' : 'not registered'} on '${network}'.`,
       ErrorCode.TOKEN_NOT_SUPPORTED,
-      `Run \`wdk token list --network ${network}\` to see the available tokens.`
+      disabled
+        ? `Enable it with: wdk token enable --network ${network} --token ${token}`
+        : `Run \`wdk token list --network ${network}\` to see the available tokens.`
     )
   }
   if (!hit.isNative && !hit.address) {
@@ -392,6 +410,7 @@ export function deleteCustomToken (network, token) {
   const key = `customTokens.${network}.${token.toLowerCase()}`
   if (configService.get(key) === undefined) return false
   configService.delete(key)
+  clearOverride('tokens', `${network}/${token.toLowerCase()}`)
   return true
 }
 
@@ -440,33 +459,31 @@ export function getDisabledTokens (network) {
 }
 
 /**
- * Enables or disables a built-in token. Enabling a token that only exists in
- * overrides clears the stale entry instead.
+ * Enables or disables a token, built-in or custom. Enabling a token that only
+ * exists in overrides clears the stale entry instead.
  *
  * @param {string} network - The network name.
  * @param {string} token - The token key (e.g. "usdt").
  * @param {boolean} enabled - The desired state.
  * @returns {boolean} True when a stale override was cleared instead.
- * @throws {WdkCliError} When the token is not built-in, is the network's native
- *   token, or is already in the desired state.
+ * @throws {WdkCliError} When the token is not registered, is the network's
+ *   native token, or is already in the desired state.
  */
 export function setTokenEnabled (network, token, enabled) {
   const id = `${network}/${token.toLowerCase()}`
-  const asset = tokensFile.assets.find((a) => a.id === id)
-  if (!asset) {
+  const entry = getTokenByName(network, token, { includeDisabled: true })
+  if (!entry) {
     if (enabled && getOverride('tokens', id)) {
       clearOverride('tokens', id)
       return true
     }
     throw new WdkCliError(
-      `'${token}' is not a built-in token on '${network}'.`,
+      `'${token}' is not registered on '${network}'.`,
       ErrorCode.TOKEN_NOT_SUPPORTED,
-      getTokenByName(network, token)
-        ? `Custom tokens are removed with: wdk token delete --network ${network} --token ${token}`
-        : `See registered tokens with: wdk token list --network ${network}`
+      `See registered tokens with: wdk token list --network ${network}`
     )
   }
-  if (!enabled && asset.isNative) {
+  if (!enabled && entry.isNative) {
     throw new WdkCliError(
       `'${token}' is the native token of '${network}'.`,
       ErrorCode.INVALID_ARGUMENT,
