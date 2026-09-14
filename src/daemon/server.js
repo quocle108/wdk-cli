@@ -721,14 +721,14 @@ export class WalletDaemon {
       ? await wdk.getAccount(r.toNetwork, req.index ?? 0)
       : account
     const recipient = r.recipient || await destAccount.getAddress()
-    const request = {
+    const request = /** @type {SwapRequest} */ ({
       fromToken: r.fromToken,
       toToken: r.toToken,
       toChain: r.toChain,
       amountIn: r.amountIn !== undefined ? BigInt(r.amountIn) : undefined,
       amountOut: r.amountOut !== undefined ? BigInt(r.amountOut) : undefined,
       recipient
-    }
+    })
     const context = { fromToken: r.fromSymbol, toToken: r.toSymbol, toNetwork: r.toNetwork }
     return { account, from: await account.getAddress(), request, context }
   }
