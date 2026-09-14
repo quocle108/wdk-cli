@@ -17,17 +17,20 @@ import { daemonClient } from '../daemon/client.js'
 
 /**
  * Ends the unlocked session after a config change, so the daemon reloads the
- * registry instead of serving the cached one. Warns in text mode; callers add
- * the returned flag to `--json` output as `walletsLocked`.
+ * registry instead of serving the cached one. In text mode it always says when
+ * the change takes effect; callers add the returned flag to `--json` output as
+ * `walletsLocked`.
  *
  * @param {boolean} json - Whether the command is printing JSON.
  * @returns {Promise<boolean>} True when wallets were locked, false when none were unlocked.
  */
 export async function lockWalletsAfterChange (json) {
-  if (!await daemonClient.isRunning()) return false
-  await daemonClient.lock()
+  const locked = await daemonClient.isRunning()
+  if (locked) await daemonClient.lock()
   if (!json) {
-    console.log(chalk.yellow('All wallets have been locked so the change takes effect. Run `wdk wallet unlock` to continue.'))
+    console.log(locked
+      ? chalk.yellow('All wallets have been locked so the change takes effect. Run `wdk wallet unlock` to continue.')
+      : chalk.dim('The change takes effect at the next `wdk wallet unlock`.'))
   }
-  return true
+  return locked
 }

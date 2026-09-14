@@ -29,6 +29,7 @@ const { applyToggle } = await import('../../../src/ui/toggle.js')
 const PROGRAM_TEXT = { opts: () => ({ json: false }) }
 const PROGRAM_JSON = { opts: () => ({ json: true }) }
 const LOCK_NOTE = 'All wallets have been locked so the change takes effect. Run `wdk wallet unlock` to continue.'
+const PENDING_NOTE = 'The change takes effect at the next `wdk wallet unlock`.'
 
 let logged
 
@@ -55,7 +56,7 @@ describe('applyToggle', () => {
       result: { network: 'tron' }
     })
 
-    expect(logged).toEqual(["Network 'tron' disabled."])
+    expect(logged).toEqual(["Network 'tron' disabled.", PENDING_NOTE])
     expect(lock).not.toHaveBeenCalled()
     expect(requirePassphraseConfirmation).toHaveBeenCalled()
   })
@@ -97,7 +98,7 @@ describe('applyToggle', () => {
       result: { module: '@gone/pkg' }
     })
 
-    expect(logged).toEqual(["Stale override for module '@gone/pkg' removed."])
+    expect(logged).toEqual(["Stale override for module '@gone/pkg' removed.", PENDING_NOTE])
   })
 
   it('reports walletsLocked: false when no wallet was unlocked', async () => {
