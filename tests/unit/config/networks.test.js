@@ -350,6 +350,17 @@ describe('network overrides', () => {
     expect(() => getNetworkConfig('solana')).toThrow("Network 'solana' is disabled.")
   })
 
+  it('keeps the testnet flag on a disabled network', () => {
+    withOverrides({
+      networks: { sepolia: { enabled: false } },
+      modules: { '@tetherto/wdk-wallet-solana': { enabled: false } }
+    })
+
+    expect(isTestnet('sepolia')).toBe(true)
+    expect(isTestnet('solana-testnet')).toBe(true)
+    expect(isTestnet('ethereum')).toBe(false)
+  })
+
   it('applies a module replacement to a network', () => {
     withOverrides({ networks: { ethereum: { module: '@acme/evm-wallet' } } })
 

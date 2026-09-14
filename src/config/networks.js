@@ -272,15 +272,15 @@ export function getChainId (name) {
 }
 
 /**
- * Returns whether a network is a testnet.
+ * Returns whether a network is a testnet. Disabling is user state, so a
+ * disabled network keeps its testnet flag.
  *
  * @param {string} name - Network name to check.
  * @returns {boolean} True if the network is a testnet.
  */
 export function isTestnet (name) {
   try {
-    const config = getNetworkConfig(name)
-    return config?.testnet === true
+    return getNetworkConfig(name, { includeDisabled: true })?.testnet === true
   } catch {
     return false
   }

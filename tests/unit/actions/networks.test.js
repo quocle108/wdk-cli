@@ -60,6 +60,16 @@ describe('listNetworks', () => {
     expect(result.networks.find((n) => n.name === 'tron')).toEqual(TRON_ENTRY)
   })
 
+  it('keeps a disabled testnet in the --testnet listing', () => {
+    withOverrides({ networks: { sepolia: { enabled: false } } })
+
+    const result = listNetworks({ testnet: true, includeDisabled: true })
+    const sepolia = result.networks.find((n) => n.name === 'sepolia')
+
+    expect(sepolia.testnet).toBe(true)
+    expect(sepolia.enabled).toBe(false)
+  })
+
   it('marks networks hidden by a disabled module', () => {
     withOverrides({ modules: { '@tetherto/wdk-wallet-solana': { enabled: false } } })
 
