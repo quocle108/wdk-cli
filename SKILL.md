@@ -75,7 +75,7 @@ wdk get address --all --testnet --json
 ```bash
 # Native balance, single network
 wdk get balance --network ethereum --json
-# {"network":"ethereum","index":0,"balance":"1000000000000000000","symbol":"ETH","decimals":18,"formatted":"1.00 ETH","usd":2100.50}
+# {"network":"ethereum","index":0,"balance":"1000000000000000000","symbol":"ETH","decimals":18,"formatted":"1.00 ETH","usd":2100.50,"address":"0x..."}
 
 # Token balance — use registered ticker (see `wdk token list`)
 wdk get balance --network ethereum --token usdt --json
@@ -95,7 +95,7 @@ Step 1: Preview the transaction with `--dry-run` to get accurate fee and USD val
 ```bash
 # Decimal (default) — send 1 ETH
 wdk send --to 0xRECIPIENT --amount 1 --network ethereum --dry-run --json
-# {"network":"ethereum","networkName":"Ethereum","to":"0x...","amount":"1000000000000000000","amountFormatted":"1.00 ETH","amountUsd":2100.50,"estimatedFee":"21000","estimatedFeeFormatted":"0.00000002 ETH","estimatedFeeUsd":0.04}
+# {"network":"ethereum","networkName":"Ethereum","from":"0x...","to":"0x...","amount":"1000000000000000000","amountFormatted":"1.00 ETH","amountUsd":2100.50,"estimatedFee":"21000","estimatedFeeFormatted":"0.00000002 ETH","estimatedFeeUsd":0.04}
 
 # ERC-20: --token is a registered ticker (see `wdk token list`)
 wdk send --to 0xRECIPIENT --amount 1.5 --token usdt --network ethereum --dry-run --json
@@ -118,7 +118,7 @@ wdk send --to 0xRECIPIENT --amount 1 --network ethereum --json
 wdk message sign --network ethereum --message "hello" --json
 # {"network":"ethereum","index":0,"address":"0x...","message":"hello","signature":"0x..."}
 wdk message verify --network ethereum --message "hello" --signature 0xSIG --json
-# {"network":"ethereum","index":0,"message":"hello","signature":"0x...","valid":true}
+# {"network":"ethereum","index":0,"message":"hello","signature":"0x...","address":"0x...","valid":true}
 ```
 
 **Signatures can authorize actions on some chains — show the exact message to the user and wait for confirmation in chat before signing.**
@@ -142,7 +142,7 @@ Step 1: Preview with `--dry-run`.
 ```bash
 # Swap (add --to-network for a cross-chain swap)
 wdk swap --network ethereum --from-token usdt --to-token eth --amount-in 100 --dry-run --json
-# {"kind":"swap","protocol":"symbiosis","payFormatted":"100 USDT","receiveFormatted":"0.0407 ETH","receiveUsd":100.10,"feesIncludedFormatted":"includes 0.00015 ETH Symbiosis on-chain fee","skipped":[{"protocol":"velora","reason":"insufficient funds"}]}
+# {"kind":"swap","from":"0x...","protocol":"symbiosis","payFormatted":"100 USDT","receiveFormatted":"0.0407 ETH","receiveUsd":100.10,"feesIncludedFormatted":"includes 0.00015 ETH Symbiosis on-chain fee","skipped":[{"protocol":"velora","reason":"insufficient funds"}]}
 # feesFormatted = fees paid on top of the amounts (gas/bridge); feesIncludedFormatted = provider fees already deducted from the quoted amounts
 
 # Bridge the same token to another chain (exact-in)
@@ -183,9 +183,9 @@ wdk method list --all --json
 
 # Invoke: each declared param is a flag; camelCase params map to kebab-case flags (maxFee → --max-fee)
 wdk method call --network spark --name getStaticDepositAddress --json
-# {"network":"spark","method":"getStaticDepositAddress","result":"bc1p..."}
+# {"network":"spark","method":"getStaticDepositAddress","address":"sp1...","result":"bc1p..."}
 wdk method call --network ethereum --name getAllowance --token 0xTOKEN --spender 0xSPENDER --json
-# {"network":"ethereum","method":"getAllowance","result":"0"}
+# {"network":"ethereum","method":"getAllowance","address":"0x...","result":"0"}
 ```
 
 Rules:

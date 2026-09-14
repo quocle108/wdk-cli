@@ -72,9 +72,11 @@ describe('listAllMethods', () => {
 })
 
 describe('callMethod', () => {
+  const DUMMY_ADDRESS = 'sprt1dummyaddress0000000000000000000000000000000000000000000000'
+
   it('dispatches a valid call through the daemon client', async () => {
     requireUnlocked.mockResolvedValue('dummy-wallet')
-    daemonCallMethod.mockResolvedValue({ transferId: 'dummy-transfer-id' })
+    daemonCallMethod.mockResolvedValue({ result: { transferId: 'dummy-transfer-id' }, address: DUMMY_ADDRESS })
 
     const result = await callMethod({
       network: 'spark-regtest',
@@ -94,6 +96,7 @@ describe('callMethod', () => {
     expect(result).toEqual({
       network: 'spark-regtest',
       method: 'claimStaticDeposit',
+      address: DUMMY_ADDRESS,
       result: { transferId: 'dummy-transfer-id' }
     })
   })

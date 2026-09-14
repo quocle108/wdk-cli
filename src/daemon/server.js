@@ -39,6 +39,17 @@ import { formatAmount } from '../ui/formatters.js'
 /** @typedef {import('./protocol.js').WalletStatus} WalletStatus */
 /** @typedef {import('node:net').Server} Server */
 /** @typedef {import('node:net').Socket} Socket */
+/** @typedef {import('@tetherto/wdk').WdkAccount} WalletAccount */
+/** @typedef {import('../services/protocol-adapter.js').SwapRequest} SwapRequest */
+/** @typedef {import('../services/swap-orchestrator.js').RouteRequestContext} RouteRequestContext */
+
+/**
+ * @typedef {Object} QuoteInputs
+ * @property {WalletAccount} account - The source-network account that pays.
+ * @property {string} from - The paying account's address, reported back to the caller.
+ * @property {SwapRequest} request - The normalized request with BigInt amounts and a resolved recipient.
+ * @property {RouteRequestContext} context - Display context for the no-route message.
+ */
 
 /**
  * @typedef {Object} WalletState
@@ -382,7 +393,7 @@ export class WalletDaemon {
           const safe = result === undefined
             ? null
             : JSON.parse(JSON.stringify({ v: result }, bigintReplacer)).v
-          return { ok: true, data: { result: safe } }
+          return { ok: true, data: { result: safe, address: await account.getAddress() } }
         } catch (e) {
           return errorResponse(e)
         }
@@ -396,6 +407,7 @@ export class WalletDaemon {
           const wdk = this.#requireWallet(wallet)
           const networkConfig = getNetworkConfig(req.network)
           const account = await wdk.getAccount(req.network, req.index ?? 0)
+          const address = await account.getAddress()
 
           if (req.token) {
             const balance = await account.getTokenBalance(req.token)
@@ -405,7 +417,8 @@ export class WalletDaemon {
               data: {
                 balance: balance.toString(),
                 symbol: tokenInfo?.symbol || 'tokens',
-                decimals: tokenInfo?.decimals || 0
+                decimals: tokenInfo?.decimals || 0,
+                address
               }
             }
           }
@@ -416,7 +429,8 @@ export class WalletDaemon {
             data: {
               balance: balance.toString(),
               symbol: networkConfig.nativeSymbol,
-              decimals: networkConfig.decimals
+              decimals: networkConfig.decimals,
+              address
             }
           }
         } catch (e) {
@@ -451,7 +465,7 @@ export class WalletDaemon {
 
           const feeFormatted = formatAmount(fee, networkConfig.decimals, networkConfig.nativeSymbol)
 
-          return { ok: true, data: { fee: fee.toString(), feeFormatted } }
+          return { ok: true, data: { fee: fee.toString(), feeFormatted, from: await account.getAddress() } }
         } catch (e) {
           return errorResponse(e)
         }
@@ -534,7 +548,7 @@ export class WalletDaemon {
           const wdk = this.#requireWallet(wallet)
           const account = await wdk.getAccount(req.network, req.index ?? 0)
           const valid = await account.verify(req.message, req.signature)
-          return { ok: true, data: { valid } }
+          return { ok: true, data: { valid, address: await account.getAddress() } }
         } catch (e) {
           return errorResponse(e)
         }
@@ -618,7 +632,7 @@ export class WalletDaemon {
       return { ok: false, error: 'Missing required field: request' }
     }
     try {
-      const { account, request, context } = await this.#resolveQuoteInputs(req, wallet)
+      const { account, from, request, context } = await this.#resolveQuoteInputs(req, wallet)
       const { quote: best, failures } = await quoteBest({
         account,
         requestKind,
@@ -632,6 +646,7 @@ export class WalletDaemon {
         ok: true,
         data: {
           protocol: best.protocol,
+          from,
           inputAmount: best.inputAmount !== undefined ? best.inputAmount.toString() : undefined,
           outputAmount: best.outputAmount.toString(),
           fees: JSON.parse(JSON.stringify({ v: best.fees }, bigintReplacer)).v,
@@ -661,7 +676,7 @@ export class WalletDaemon {
       return { ok: false, error: 'Missing required field: request' }
     }
     try {
-      const { account, request, context } = await this.#resolveQuoteInputs(req, wallet)
+      const { account, from, request, context } = await this.#resolveQuoteInputs(req, wallet)
       const { protocol, result, failures } = await executeBest({
         account,
         requestKind,
@@ -675,6 +690,7 @@ export class WalletDaemon {
         ok: true,
         data: {
           protocol,
+          from,
           result: JSON.parse(JSON.stringify({ v: result }, bigintReplacer)).v,
           skipped: failures
         }
@@ -694,7 +710,7 @@ export class WalletDaemon {
    *
    * @param {DaemonRequest} req - The parsed request object (with `req.request` set).
    * @param {string} wallet - The resolved wallet name.
-   * @returns {Promise<{ account: any, request: object, context: object }>}
+   * @returns {Promise<QuoteInputs>} The inputs shared by the quote and execute handlers.
    */
   async #resolveQuoteInputs (req, wallet) {
     const wdk = this.#requireWallet(wallet)
@@ -714,7 +730,7 @@ export class WalletDaemon {
       recipient
     }
     const context = { fromToken: r.fromSymbol, toToken: r.toSymbol, toNetwork: r.toNetwork }
-    return { account, request, context }
+    return { account, from: await account.getAddress(), request, context }
   }
 
   /**
