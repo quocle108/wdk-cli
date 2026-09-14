@@ -19,7 +19,7 @@ import { validateNetwork } from '../config/networks.js'
 import { WdkCliError, ErrorCode, handleError } from '../errors/index.js'
 import { configureHelp } from '../ui/help.js'
 import { requirePassphraseConfirmation } from '../ui/auth.js'
-import { daemonClient } from '../daemon/client.js'
+import { lockWalletsAfterChange } from '../ui/session.js'
 
 /** @typedef {import('commander').Command} Command */
 
@@ -237,8 +237,12 @@ export function registerConfigCommand (program) {
 
       configService.set(fullKey, parsed)
 
+      const walletsLocked = affectsSdkRegistration(fullKey) && program.opts().json
+        ? await lockWalletsAfterChange(true)
+        : false
+
       if (program.opts().json) {
-        console.log(JSON.stringify({ key: fullKey, value: parsed, success: true }))
+        console.log(JSON.stringify({ key: fullKey, value: parsed, success: true, walletsLocked }))
       } else if (network && !key) {
         console.log(chalk.green(`Updated config for ${network}`))
       } else if (network && key) {
@@ -247,15 +251,8 @@ export function registerConfigCommand (program) {
         console.log(chalk.green(`Set ${key} = ${value}`))
       }
 
-      if (affectsSdkRegistration(fullKey)) {
-        await daemonClient.lock()
-        if (!program.opts().json) {
-          console.log(
-            chalk.yellow(
-              'Note: all wallets have been locked so the new network config takes effect. Run `wdk wallet unlock` to continue.'
-            )
-          )
-        }
+      if (affectsSdkRegistration(fullKey) && !program.opts().json) {
+        await lockWalletsAfterChange(false)
       }
     } catch (error) {
       handleError(error, program.opts().verbose, program.opts().json)
@@ -316,17 +313,12 @@ export function registerConfigCommand (program) {
         if (preservedCustomNetworks) configService.set('customNetworks', preservedCustomNetworks)
         if (preservedCustomTokens) configService.set('customTokens', preservedCustomTokens)
 
-        await daemonClient.lock()
-
         if (program.opts().json) {
-          console.log(JSON.stringify({ reset: true, all: true }))
+          const walletsLocked = await lockWalletsAfterChange(true)
+          console.log(JSON.stringify({ reset: true, all: true, walletsLocked }))
         } else {
           console.log(chalk.green('All config has been reset to factory defaults.'))
-          console.log(
-            chalk.yellow(
-              'Note: all wallets have been locked so the new config takes effect. Run `wdk wallet unlock` to continue.'
-            )
-          )
+          await lockWalletsAfterChange(false)
         }
         return
       }
@@ -345,23 +337,20 @@ export function registerConfigCommand (program) {
         configService.delete(fullKey)
       }
 
+      const locksWallets = affectsSdkRegistration(fullKey)
+
       if (program.opts().json) {
-        console.log(JSON.stringify({ key: fullKey, reset: true, value: defaultValue ?? null }))
-      } else if (network) {
+        const walletsLocked = locksWallets ? await lockWalletsAfterChange(true) : false
+        console.log(JSON.stringify({ key: fullKey, reset: true, value: defaultValue ?? null, walletsLocked }))
+        return
+      }
+      if (network) {
         console.log(chalk.green(`Reset ${key} to default (${network}).`))
       } else {
         console.log(chalk.green(`Reset ${key} to default.`))
       }
-
-      if (affectsSdkRegistration(fullKey)) {
-        await daemonClient.lock()
-        if (!program.opts().json) {
-          console.log(
-            chalk.yellow(
-              'Note: all wallets have been locked so the new network config takes effect. Run `wdk wallet unlock` to continue.'
-            )
-          )
-        }
+      if (locksWallets) {
+        await lockWalletsAfterChange(false)
       }
     } catch (error) {
       handleError(error, program.opts().verbose, program.opts().json)

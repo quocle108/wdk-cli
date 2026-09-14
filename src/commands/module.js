@@ -29,7 +29,7 @@ import { setOverride } from '../services/override-service.js'
 import { applyToggle } from '../ui/toggle.js'
 import { parseModuleName } from '../config/networks.js'
 import { requirePassphraseConfirmation } from '../ui/auth.js'
-import { daemonClient } from '../daemon/client.js'
+import { lockWalletsAfterChange } from '../ui/session.js'
 import { WdkCliError, ErrorCode, handleError } from '../errors/index.js'
 import { configureHelp } from '../ui/help.js'
 import { createTable } from '../ui/tables.js'
@@ -155,9 +155,7 @@ export function registerModuleCommand (program) {
       }
       await requirePassphraseConfirmation()
 
-      if (await daemonClient.isRunning()) {
-        await daemonClient.lock()
-      }
+      const walletsLocked = await lockWalletsAfterChange(program.opts().json)
       runNpm(['install', '--no-save', `${name}@${version}`], { quiet: program.opts().json })
       if (target.builtinPin) {
         setOverride('modules', name, { version: version === target.defaultVersion ? undefined : version })
@@ -166,7 +164,7 @@ export function registerModuleCommand (program) {
       }
 
       if (program.opts().json) {
-        console.log(JSON.stringify({ module: name, version, installed: getInstalledVersion(name) }))
+        console.log(JSON.stringify({ module: name, version, installed: getInstalledVersion(name), walletsLocked }))
         return
       }
       if (target.builtinPin) {
@@ -197,9 +195,7 @@ export function registerModuleCommand (program) {
       const name = options.name
       const target = resolveRemoveTarget(name)
       await requirePassphraseConfirmation()
-      if (await daemonClient.isRunning()) {
-        await daemonClient.lock()
-      }
+      const walletsLocked = await lockWalletsAfterChange(program.opts().json)
       if (target.builtinPin) {
         setOverride('modules', name, { version: undefined })
         runNpm(['install', '--no-save', `${name}@${target.defaultVersion}`], { quiet: program.opts().json })
@@ -209,7 +205,7 @@ export function registerModuleCommand (program) {
       }
 
       if (program.opts().json) {
-        console.log(JSON.stringify({ module: name, removed: true }))
+        console.log(JSON.stringify({ module: name, removed: true, walletsLocked }))
         return
       }
       console.log(target.builtinPin

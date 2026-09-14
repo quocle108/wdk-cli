@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import chalk from 'chalk'
-import { daemonClient } from '../daemon/client.js'
+import { requirePassphraseConfirmation } from './auth.js'
+import { lockWalletsAfterChange } from './session.js'
 
 /** @typedef {import('commander').Command} Command */
 
@@ -26,28 +26,26 @@ import { daemonClient } from '../daemon/client.js'
  */
 
 /**
- * Writes an enable/disable override and reports the result. The daemon caches
- * the registry per unlocked wallet, so it is locked to pick the change up.
+ * Writes an enable/disable override and reports the result. Confirms with the
+ * default wallet's passphrase first, like every other command that changes
+ * persistent config, then ends the session so the daemon reloads the registry.
  *
  * @param {Command} program - The root program, read for the global `--json` option.
  * @param {ToggleOptions} options - What to write and how to report it.
  * @returns {Promise<void>}
  */
 export async function applyToggle (program, { apply, enabled, label, result }) {
+  const json = program.opts().json
+  await requirePassphraseConfirmation()
   const stale = apply()
-  const locked = await daemonClient.isRunning()
-  if (locked) {
-    await daemonClient.lock()
-  }
 
-  if (program.opts().json) {
-    console.log(JSON.stringify({ ...result, enabled, stale }))
+  if (json) {
+    const walletsLocked = await lockWalletsAfterChange(json)
+    console.log(JSON.stringify({ ...result, enabled, stale, walletsLocked }))
     return
   }
   console.log(stale
     ? `Stale override for ${label[0].toLowerCase()}${label.slice(1)} removed.`
     : `${label} ${enabled ? 'enabled' : 'disabled'}.`)
-  if (locked) {
-    console.log(chalk.yellow('All wallets have been locked so the change takes effect. Run `wdk wallet unlock` to continue.'))
-  }
+  await lockWalletsAfterChange(json)
 }

@@ -16,10 +16,13 @@ import { jest } from '@jest/globals'
 
 const isRunning = jest.fn()
 const lock = jest.fn()
+const requirePassphraseConfirmation = jest.fn()
 
 jest.unstable_mockModule('../../../src/daemon/client.js', () => ({
   daemonClient: { isRunning, lock }
 }))
+
+jest.unstable_mockModule('../../../src/ui/auth.js', () => ({ requirePassphraseConfirmation }))
 
 const { applyToggle } = await import('../../../src/ui/toggle.js')
 
@@ -32,6 +35,8 @@ let logged
 beforeEach(() => {
   isRunning.mockReset()
   lock.mockReset()
+  requirePassphraseConfirmation.mockReset()
+  requirePassphraseConfirmation.mockResolvedValue(undefined)
   isRunning.mockResolvedValue(false)
   logged = []
   jest.spyOn(console, 'log').mockImplementation((line) => logged.push(String(line)))
@@ -51,6 +56,22 @@ describe('applyToggle', () => {
     })
 
     expect(logged).toEqual(["Network 'tron' disabled."])
+    expect(lock).not.toHaveBeenCalled()
+    expect(requirePassphraseConfirmation).toHaveBeenCalled()
+  })
+
+  it('refuses to write when the passphrase is not confirmed', async () => {
+    requirePassphraseConfirmation.mockRejectedValue(new Error('Wrong passphrase.'))
+    const apply = jest.fn()
+
+    await expect(applyToggle(PROGRAM_TEXT, {
+      apply,
+      enabled: false,
+      label: "Network 'tron'",
+      result: { network: 'tron' }
+    })).rejects.toThrow('Wrong passphrase.')
+
+    expect(apply).not.toHaveBeenCalled()
     expect(lock).not.toHaveBeenCalled()
   })
 
@@ -79,6 +100,19 @@ describe('applyToggle', () => {
     expect(logged).toEqual(["Stale override for module '@gone/pkg' removed."])
   })
 
+  it('reports walletsLocked: false when no wallet was unlocked', async () => {
+    await applyToggle(PROGRAM_JSON, {
+      apply: () => false,
+      enabled: true,
+      label: "Network 'tron'",
+      result: { network: 'tron' }
+    })
+
+    expect(logged).toEqual([
+      JSON.stringify({ network: 'tron', enabled: true, stale: false, walletsLocked: false })
+    ])
+  })
+
   it('prints a single JSON line and no lock note', async () => {
     isRunning.mockResolvedValue(true)
 
@@ -90,7 +124,7 @@ describe('applyToggle', () => {
     })
 
     expect(logged).toEqual([
-      JSON.stringify({ network: 'ethereum', token: 'usdt', enabled: false, stale: false })
+      JSON.stringify({ network: 'ethereum', token: 'usdt', enabled: false, stale: false, walletsLocked: true })
     ])
   })
 })
