@@ -20,6 +20,7 @@ import {
   isTestnet,
   getNetworkConfig,
   getAllNetworks,
+  getAllNetworksIncludingDisabled,
   getAllNetworkNames,
   isCustomNetwork,
   isBuiltinNetwork,
@@ -350,15 +351,32 @@ describe('network overrides', () => {
     expect(() => getNetworkConfig('solana')).toThrow("Network 'solana' is disabled.")
   })
 
-  it('keeps the testnet flag on a disabled network', () => {
+  it('keeps the testnet flag on a network the user disabled', () => {
+    withOverrides({ networks: { sepolia: { enabled: false } } })
+
+    expect(isTestnet('sepolia')).toBe(true)
+    expect(isTestnet('ethereum')).toBe(false)
+  })
+
+  it('hides a module-disabled network from listings but keeps a self-disabled one', () => {
     withOverrides({
-      networks: { sepolia: { enabled: false } },
+      networks: { tron: { enabled: false } },
       modules: { '@tetherto/wdk-wallet-solana': { enabled: false } }
     })
 
-    expect(isTestnet('sepolia')).toBe(true)
-    expect(isTestnet('solana-testnet')).toBe(true)
-    expect(isTestnet('ethereum')).toBe(false)
+    const listed = Object.keys(getAllNetworksIncludingDisabled())
+
+    expect(listed).toEqual(NETWORK_NAMES.filter((n) => !n.startsWith('solana')))
+    expect(isNetworkDisabled('tron')).toBe(true)
+    expect(isNetworkDisabled('solana')).toBe(false)
+  })
+
+  it('points a module-disabled network at its module instead of enabling it', () => {
+    withOverrides({ modules: { '@tetherto/wdk-wallet-solana': { enabled: false } } })
+
+    expect(() => setNetworkEnabled('solana', true)).toThrow(
+      "Network 'solana' is disabled by its module."
+    )
   })
 
   it('applies a module replacement to a network', () => {

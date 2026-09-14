@@ -55,6 +55,8 @@ wdk network list --json
 wdk network info --network ethereum --json
 ```
 
+Each entry carries `enabled`. A network the user disabled stays listed with `enabled: false` — treat it as unusable and tell the user to run `wdk network enable --name <network>` themselves. A network whose wallet module is disabled is **not listed at all**: if the user expects one that is missing, have them check `wdk module list` for a `disabled` module.
+
 ### Get Address
 
 ```bash
@@ -251,7 +253,7 @@ Errors are returned as structured JSON: `{"error": "...", "code": "...", "sugges
 | `INVALID_AMOUNT` | Malformed / negative / over-precision amount | Re-prompt user; respect token decimals (see `wdk token info`) |
 | `INVALID_ARGUMENT` | Bad/missing CLI flag | Read the message; common cases: missing `--key`, mutually exclusive flags |
 | `TOKEN_NOT_SUPPORTED` | Unregistered `--token` | Ask user to register: `wdk token add '{"network":"<n>","token":"<t>","symbol":"...","decimals":...,"isNative":...,...}'` |
-| `NETWORK_NOT_SUPPORTED` | Unknown network name, **or** the network exists but has no `indexerSlug` configured (so `get history` is unavailable) | If the message says "is disabled", the user disabled the network or its module — the error hint names the exact enable command to suggest (never run it yourself). If the network is unknown, ask the user to run `wdk network list`. If the message says "not supported by the indexer API", the network is missing its `indexerSlug` — ask the user to delete and recreate it with `--indexer-slug <chain>` (the chain slug the WDK indexer uses, usually the same as the network name). |
+| `NETWORK_NOT_SUPPORTED` | Unknown network name, **or** the network exists but has no `indexerSlug` configured (so `get history` is unavailable) | If the message says "is disabled", the user disabled the network or its module — the error hint names the exact enable command to suggest (never run it yourself). On a disabled network `wdk token list`, `wdk token info` and `wdk method list` fail the same way; report that rather than retrying. If the network is unknown, ask the user to run `wdk network list`. If the message says "not supported by the indexer API", the network is missing its `indexerSlug` — ask the user to delete and recreate it with `--indexer-slug <chain>` (the chain slug the WDK indexer uses, usually the same as the network name). |
 | `NETWORK_ERROR` (403 from indexer) | Missing/invalid API key | Ask user: `wdk config set --key indexer.apiKey --value <key>` |
 | `MISSING_CONFIG` (moonpay) | Ramp not configured | Ask user: `wdk config set --key ramp.moonpay.apiKey --value <key>` (also `signUrl`, `environment`) |
 | `ENVIRONMENT_MISMATCH` | sandbox key on mainnet (or vice versa) | Ask user: `wdk config set --key ramp.moonpay.environment --value <sandbox\|production>` |

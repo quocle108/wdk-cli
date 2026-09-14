@@ -242,13 +242,6 @@ export function registerNetworkCommand (program) {
     try {
       const networkName = options.network
       const disabled = isNetworkDisabled(networkName)
-      if (!isValidNetwork(networkName) && !disabled) {
-        throw new WdkCliError(
-          `Network '${networkName}' is not supported.`,
-          ErrorCode.NETWORK_NOT_SUPPORTED
-        )
-      }
-
       const config = getNetworkConfig(networkName, { includeDisabled: true })
       const netConf = configService.get(`networks.${networkName}`) ?? {}
 

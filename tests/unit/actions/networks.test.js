@@ -70,13 +70,13 @@ describe('listNetworks', () => {
     expect(sepolia.enabled).toBe(false)
   })
 
-  it('marks networks hidden by a disabled module', () => {
+  it('leaves networks hidden by a disabled module out of the listing', () => {
     withOverrides({ modules: { '@tetherto/wdk-wallet-solana': { enabled: false } } })
 
     const result = listNetworks({ includeDisabled: true })
+    const expected = NETWORK_NAMES.filter((n) => !n.startsWith('solana'))
 
-    expect(result.networks.filter((n) => !n.enabled).map((n) => n.name)).toEqual([
-      'solana', 'solana-testnet', 'solana-devnet'
-    ])
+    expect(result.networks.map((n) => n.name)).toEqual(expected)
+    expect(result.networks.filter((n) => !n.enabled)).toEqual([])
   })
 })

@@ -90,9 +90,9 @@ function getEnabledBuiltinNetworks () {
  * @returns {WdkCliError} The error to throw.
  */
 function networkError (name) {
-  if (isNetworkDisabled(name)) {
-    const module = getOverride('networks', name)?.module ??
-      (NETWORKS[name] ?? readCustomNetworks()[name]).module
+  const entry = NETWORKS[name] ?? readCustomNetworks()[name]
+  if (entry && !(name in getAllNetworks())) {
+    const module = getOverride('networks', name)?.module ?? entry.module
     const suggestion = isDisabled('networks', name)
       ? `Enable it with: wdk network enable --name ${name}`
       : `Enable its module with: wdk module enable --name ${module}`
@@ -111,6 +111,14 @@ function networkError (name) {
  * @throws {WdkCliError} When the network is unknown or already in the desired state.
  */
 export function setNetworkEnabled (name, enabled) {
+  const entry = NETWORKS[name] ?? readCustomNetworks()[name]
+  if (enabled && entry && !isDisabled('networks', name) && !(name in getAllNetworks())) {
+    throw new WdkCliError(
+      `Network '${name}' is disabled by its module.`,
+      ErrorCode.NETWORK_NOT_SUPPORTED,
+      `Enable it with: wdk module enable --name ${getOverride('networks', name)?.module ?? entry.module}`
+    )
+  }
   return setEnabled(
     'networks',
     name,
@@ -188,12 +196,18 @@ export function getAllNetworks () {
 }
 
 /**
- * Returns every network, disabled ones included, for listings that show state.
+ * Returns the networks a listing shows: the usable ones plus those the user
+ * disabled directly. Networks hidden by a disabled module are left out — the
+ * module is what you re-enable, and `wdk module list` shows it.
  *
- * @returns {Record<string, NetworkConfig>} Combined map of all network configs.
+ * @returns {Record<string, NetworkConfig>} Combined map of visible network configs.
  */
 export function getAllNetworksIncludingDisabled () {
-  return { ...NETWORKS, ...readCustomNetworks() }
+  const all = { ...NETWORKS, ...readCustomNetworks() }
+  const enabled = getAllNetworks()
+  return Object.fromEntries(
+    Object.entries(all).filter(([name]) => name in enabled || isDisabled('networks', name))
+  )
 }
 
 /**
@@ -236,15 +250,14 @@ export function getNetworkConfig (name, options = {}) {
 }
 
 /**
- * Returns whether a network exists but is currently hidden, directly or through
- * its wallet module.
+ * Returns whether the user disabled a network directly. Networks hidden by a
+ * disabled module are not reported here: they are the module's to re-enable.
  *
  * @param {string} name - Network name.
- * @returns {boolean} True when the network is disabled.
+ * @returns {boolean} True when the network carries its own disabled override.
  */
 export function isNetworkDisabled (name) {
-  const known = name in NETWORKS || name in readCustomNetworks()
-  return known && !(name in getAllNetworks())
+  return (name in NETWORKS || name in readCustomNetworks()) && isDisabled('networks', name)
 }
 
 /**
