@@ -95,7 +95,19 @@ function findNetwork (name) {
 }
 
 /**
- * Returns the error for a network that failed to resolve.
+ * Returns the module a network resolves to, honouring a `module` override.
+ *
+ * @param {string} name - Network name.
+ * @param {NetworkConfig} entry - The registered network.
+ * @returns {string} The module package name.
+ */
+function moduleOf (name, entry) {
+  return getOverride('networks', name)?.module ?? entry.module
+}
+
+/**
+ * Returns the error for a network that failed to resolve. A network whose
+ * module is disabled points at the module, whatever its own override says.
  *
  * @param {string} name - Network name.
  * @returns {WdkCliError} The error to throw.
@@ -103,10 +115,10 @@ function findNetwork (name) {
 function networkError (name) {
   const entry = findNetwork(name)
   if (entry && !hasOwn(getAllNetworks(), name)) {
-    const module = getOverride('networks', name)?.module ?? entry.module
-    const suggestion = isDisabled('networks', name)
-      ? `Enable it with: wdk network enable --name ${name}`
-      : `Enable its module with: wdk module enable --name ${module}`
+    const module = moduleOf(name, entry)
+    const suggestion = isDisabled('modules', module)
+      ? `Enable its module with: wdk module enable --name ${module}`
+      : `Enable it with: wdk network enable --name ${name}`
     return new WdkCliError(`Network '${name}' is disabled.`, ErrorCode.NETWORK_NOT_SUPPORTED, suggestion)
   }
   return new WdkCliError(`Network '${name}' is not supported.`, ErrorCode.NETWORK_NOT_SUPPORTED)
@@ -114,20 +126,22 @@ function networkError (name) {
 
 /**
  * Enables or disables a network, built-in or custom. Enabling a name that only
- * exists in overrides clears the stale entry instead.
+ * exists in overrides clears the stale entry instead. A network whose module is
+ * disabled cannot be toggled either way: the module is what to re-enable.
  *
  * @param {string} name - The network name.
  * @param {boolean} enabled - The desired state.
  * @returns {boolean} True when a stale override was cleared instead.
- * @throws {WdkCliError} When the network is unknown or already in the desired state.
+ * @throws {WdkCliError} When the network is unknown, hidden by a disabled module, or
+ *   already in the desired state.
  */
 export function setNetworkEnabled (name, enabled) {
   const entry = findNetwork(name)
-  if (enabled && entry && !isDisabled('networks', name) && !hasOwn(getAllNetworks(), name)) {
+  if (entry && isDisabled('modules', moduleOf(name, entry))) {
     throw new WdkCliError(
       `Network '${name}' is disabled by its module.`,
       ErrorCode.NETWORK_NOT_SUPPORTED,
-      `Enable it with: wdk module enable --name ${getOverride('networks', name)?.module ?? entry.module}`
+      `Enable its module with: wdk module enable --name ${moduleOf(name, entry)}`
     )
   }
   return setEnabled(
@@ -208,8 +222,9 @@ export function getAllNetworks () {
 
 /**
  * Returns the networks a listing shows: the usable ones plus those the user
- * disabled directly. Networks hidden by a disabled module are left out — the
- * module is what you re-enable, and `wdk module list` shows it.
+ * disabled directly. Networks hidden by a disabled module are left out, even
+ * when they carry their own override — the module is what you re-enable, and
+ * `wdk module list` shows it.
  *
  * @returns {Record<string, NetworkConfig>} Combined map of visible network configs.
  */
@@ -217,7 +232,9 @@ export function getAllNetworksIncludingDisabled () {
   const all = { ...NETWORKS, ...readCustomNetworks() }
   const enabled = getAllNetworks()
   return Object.fromEntries(
-    Object.entries(all).filter(([name]) => hasOwn(enabled, name) || isDisabled('networks', name))
+    Object.entries(all).filter(([name, entry]) =>
+      hasOwn(enabled, name) || (isDisabled('networks', name) && !isDisabled('modules', moduleOf(name, entry)))
+    )
   )
 }
 

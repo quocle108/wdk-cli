@@ -392,6 +392,52 @@ describe('network overrides', () => {
     )
   })
 
+  it('refuses to disable a module-disabled network', () => {
+    withOverrides({ modules: { '@tetherto/wdk-wallet-solana': { enabled: false } } })
+    const setMock = jest.spyOn(configService, 'set').mockImplementation(() => {})
+
+    expect(() => setNetworkEnabled('solana', false)).toThrow(
+      "Network 'solana' is disabled by its module."
+    )
+    expect(setMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses to enable a self-disabled network while its module is disabled', () => {
+    withOverrides({
+      networks: { solana: { enabled: false } },
+      modules: { '@tetherto/wdk-wallet-solana': { enabled: false } }
+    })
+    const deleteMock = jest.spyOn(configService, 'delete').mockImplementation(() => {})
+
+    expect(() => setNetworkEnabled('solana', true)).toThrow(
+      "Network 'solana' is disabled by its module."
+    )
+    expect(deleteMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps a self-disabled network hidden while its module is disabled', () => {
+    withOverrides({
+      networks: { solana: { enabled: false } },
+      modules: { '@tetherto/wdk-wallet-solana': { enabled: false } }
+    })
+
+    expect(Object.keys(getAllNetworksIncludingDisabled())).toEqual(
+      NETWORK_NAMES.filter((n) => !n.startsWith('solana'))
+    )
+  })
+
+  it('points a self-disabled network at its module when both are disabled', () => {
+    withOverrides({
+      networks: { solana: { enabled: false } },
+      modules: { '@tetherto/wdk-wallet-solana': { enabled: false } }
+    })
+
+    let error
+    try { getNetworkConfig('solana') } catch (e) { error = e }
+    expect(error.message).toBe("Network 'solana' is disabled.")
+    expect(error.suggestion).toBe('Enable its module with: wdk module enable --name @tetherto/wdk-wallet-solana')
+  })
+
   it('applies a module replacement to a network', () => {
     withOverrides({ networks: { ethereum: { module: '@acme/evm-wallet' } } })
 
