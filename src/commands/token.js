@@ -347,6 +347,7 @@ export function registerTokenCommand (program) {
     cmd.action(async (options) => {
       try {
         const { network, token: name } = options
+        validateNetwork(network)
         await applyToggle(program, {
           apply: () => setTokenEnabled(network, name, enabled),
           enabled,

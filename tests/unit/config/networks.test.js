@@ -347,6 +347,20 @@ describe('network overrides', () => {
     expect(deleteMock).toHaveBeenCalledWith('overrides')
   })
 
+  it('drops the token overrides of a deleted custom network, keeping other networks', () => {
+    jest.spyOn(configService, 'delete').mockImplementation(() => {})
+    const setMock = jest.spyOn(configService, 'set').mockImplementation(() => {})
+    let overrides = {
+      tokens: { 'mychain/mytok': { enabled: false }, 'mychain/other': { enabled: false }, 'ethereum/usdt': { enabled: false } }
+    }
+    jest.spyOn(configService, 'get').mockImplementation((key) => (key === 'overrides' ? overrides : undefined))
+    setMock.mockImplementation((key, value) => { if (key === 'overrides') overrides = value })
+
+    deleteCustomNetwork('mychain')
+
+    expect(overrides).toEqual({ tokens: { 'ethereum/usdt': { enabled: false } } })
+  })
+
   it('clears a stale override on enable', () => {
     const deleteMock = jest.spyOn(configService, 'delete').mockImplementation(() => {})
     withOverrides({ networks: { 'gone-net': { enabled: false } } })

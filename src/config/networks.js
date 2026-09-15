@@ -14,7 +14,7 @@
 
 import { configService } from '../services/config-service.js'
 import { getCustomModules } from '../services/module-service.js'
-import { getOverride, isDisabled, setEnabled, clearOverride, hasOwn, getOwn } from '../services/override-service.js'
+import { getOverrides, getOverride, isDisabled, setEnabled, clearOverride, hasOwn, getOwn } from '../services/override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { walletsFile } from './wdk-config.js'
 import { getNativeToken } from '../services/token-service.js'
@@ -358,6 +358,9 @@ export function saveCustomNetwork (name, config) {
 export function deleteCustomNetwork (name) {
   configService.delete(`customNetworks.${name}`)
   clearOverride('networks', name)
+  for (const id of Object.keys(getOverrides().tokens || {})) {
+    if (id.startsWith(`${name}/`)) clearOverride('tokens', id)
+  }
 }
 
 /**
