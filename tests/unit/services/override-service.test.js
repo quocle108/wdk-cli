@@ -111,4 +111,11 @@ describe('isDisabled', () => {
     expect(isDisabled('networks', 'ethereum')).toBe(false)
     expect(getOverride('networks', 'tron')).toEqual({ enabled: false })
   })
+
+  it('ignores inherited object properties as names', () => {
+    getConfig.mockReturnValue({ networks: { tron: { enabled: false } } })
+    expect(isDisabled('networks', 'constructor')).toBe(false)
+    expect(getOverride('networks', 'constructor')).toBeUndefined()
+    expect(getOverride('networks', '__proto__')).toBeUndefined()
+  })
 })

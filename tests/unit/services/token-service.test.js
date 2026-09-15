@@ -333,6 +333,15 @@ describe('token overrides', () => {
     )
   })
 
+  it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__'])(
+    'refuses the inherited object property %s as a token name', (name) => {
+      expect(() => setTokenEnabled('ethereum', name, false)).toThrow(
+        `'${name}' is not registered on 'ethereum'.`
+      )
+      expect(store.overrides).toBeUndefined()
+    }
+  )
+
   it('disables a custom token', () => {
     store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
 

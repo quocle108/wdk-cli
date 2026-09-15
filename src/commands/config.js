@@ -16,6 +16,7 @@ import chalk from 'chalk'
 import { configService } from '../services/config-service.js'
 import { CONFIG_DEFAULTS } from '../config/constants.js'
 import { validateNetwork } from '../config/networks.js'
+import { hasOwn } from '../services/override-service.js'
 import { WdkCliError, ErrorCode, handleError } from '../errors/index.js'
 import { configureHelp } from '../ui/help.js'
 import { requirePassphraseConfirmation } from '../ui/auth.js'
@@ -45,7 +46,7 @@ function getNestedValue (obj, path) {
   /** @type {unknown} */
   let cur = obj
   for (const key of path.split('.')) {
-    if (cur === null || typeof cur !== 'object') return undefined
+    if (!hasOwn(cur, key)) return undefined
     cur = /** @type {Record<string, unknown>} */ (cur)[key]
   }
   return cur

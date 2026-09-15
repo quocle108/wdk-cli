@@ -301,6 +301,13 @@ describe('setModuleEnabled', () => {
     expect(() => setModuleEnabled('velora', false)).toThrow("'velora' is not a module.")
   })
 
+  it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__'])(
+    'rejects the inherited object property %s as a module name', (name) => {
+      expect(() => setModuleEnabled(name, false)).toThrow(`'${name}' is not a module.`)
+      expect(setConfig).not.toHaveBeenCalled()
+    }
+  )
+
   it('clears a stale override on enable', () => {
     withOverrides({ modules: { '@gone/pkg': { enabled: false } } })
 

@@ -280,6 +280,19 @@ describe('network overrides', () => {
     expect(() => setNetworkEnabled('nope', false)).toThrow("'nope' is not a network.")
   })
 
+  it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__'])(
+    'rejects the inherited object property %s as a network name', (name) => {
+      withOverrides(undefined)
+      const setMock = jest.spyOn(configService, 'set').mockImplementation(() => {})
+
+      expect(isValidNetwork(name)).toBe(false)
+      expect(isCustomNetwork(name)).toBe(false)
+      expect(isNetworkDisabled(name)).toBe(false)
+      expect(() => setNetworkEnabled(name, false)).toThrow(`'${name}' is not a network.`)
+      expect(setMock).not.toHaveBeenCalled()
+    }
+  )
+
   const withDisabledCustomNetwork = () => {
     jest.spyOn(configService, 'get').mockImplementation((key) => {
       if (key === 'customNetworks') return { mychain: DUMMY_CUSTOM_NETWORK }

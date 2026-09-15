@@ -45,6 +45,12 @@ describe('getProtocol', () => {
   it('rejects an unknown protocol with the available list', () => {
     expect(() => getProtocol('nope')).toThrow("Unknown protocol 'nope'.")
   })
+
+  it.each(['constructor', 'toString', '__proto__'])(
+    'rejects the inherited object property %s as a protocol name', (name) => {
+      expect(() => getProtocol(name)).toThrow(`Unknown protocol '${name}'.`)
+    }
+  )
 })
 
 describe('resolveProtocolConfig', () => {

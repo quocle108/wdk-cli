@@ -17,7 +17,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { walletsFile } from '../config/wdk-config.js'
 import { configService } from './config-service.js'
-import { getOverrides, getOverride, isDisabled, setEnabled, clearOverride } from './override-service.js'
+import { getOverrides, getOverride, isDisabled, setEnabled, clearOverride, hasOwn, getOwn } from './override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
 /** @typedef {import('../config/wdk-config.js').WdkModuleEntry} WdkModuleEntry */
@@ -109,7 +109,7 @@ export function getModuleStatuses () {
   /** @type {ModuleStatus[]} */
   const statuses = []
   for (const [name, e] of Object.entries(builtIn)) {
-    const override = overrides[name]
+    const override = getOwn(overrides, name)
     const pinned = override?.version ?? e.version
     const installed = getInstalledVersion(name)
     const status = override?.enabled === false
@@ -125,15 +125,15 @@ export function getModuleStatuses () {
     })
   }
   for (const [name, e] of Object.entries(custom)) {
-    if (name in builtIn) continue
+    if (hasOwn(builtIn, name)) continue
     const installed = getInstalledVersion(name)
-    const status = overrides[name]?.enabled === false
+    const status = getOwn(overrides, name)?.enabled === false
       ? 'disabled'
       : installed === null ? 'not installed' : installed === e.version ? 'ok' : 'version mismatch'
     statuses.push({ module: name, pinned: e.version, installed, status, source: 'custom' })
   }
   for (const [name, o] of Object.entries(overrides)) {
-    if (name in builtIn || name in custom) continue
+    if (hasOwn(builtIn, name) || hasOwn(custom, name)) continue
     statuses.push({
       module: name,
       pinned: o.version ?? '-',
@@ -166,7 +166,7 @@ export function getModuleStatuses () {
  *   version than requested.
  */
 export function resolveAddTarget (name, version) {
-  const builtin = walletsFile.modules?.[name]
+  const builtin = getOwn(walletsFile.modules, name)
   if (builtin) {
     if (!version) {
       throw new WdkCliError(
@@ -181,7 +181,7 @@ export function resolveAddTarget (name, version) {
     }
     return { repair: false, builtinPin: true, version, defaultVersion: builtin.version }
   }
-  const entry = getCustomModules()[name]
+  const entry = getOwn(getCustomModules(), name)
   if (!entry) return { repair: false, version }
 
   if (version && version !== entry.version) {
@@ -220,7 +220,7 @@ export function saveCustomModule (name, version) {
  * @throws {WdkCliError} When the package is a built-in module or not added.
  */
 export function assertRemovable (name) {
-  if (walletsFile.modules?.[name]) {
+  if (hasOwn(walletsFile.modules, name)) {
     throw new WdkCliError(
       `'${name}' is a built-in module and cannot be removed.`,
       ErrorCode.INVALID_ARGUMENT,
@@ -228,7 +228,7 @@ export function assertRemovable (name) {
     )
   }
   const custom = getCustomModules()
-  if (!custom[name]) {
+  if (!hasOwn(custom, name)) {
     const names = Object.keys(custom)
     throw new WdkCliError(
       `Module '${name}' is not a custom module.`,
@@ -269,7 +269,7 @@ export function removeCustomModule (name) {
  * @throws {WdkCliError} When the package is an unpinned built-in or not added.
  */
 export function resolveRemoveTarget (name) {
-  const builtin = walletsFile.modules?.[name]
+  const builtin = getOwn(walletsFile.modules, name)
   if (builtin) {
     if (getOverride('modules', name)?.version) {
       return { builtinPin: true, defaultVersion: builtin.version }
@@ -295,17 +295,18 @@ export function resolveRemoveTarget (name) {
  */
 export function setModuleEnabled (name, enabled) {
   const verb = enabled ? 'enable' : 'disable'
+  const protocol = getOwn(walletsFile.protocols, name)
   let suggestion = 'See package names with: wdk module list'
-  if (walletsFile.networks[name]) {
+  if (hasOwn(walletsFile.networks, name)) {
     suggestion = `'${name}' is a network. Use: wdk network ${verb} --name ${name}`
-  } else if (walletsFile.protocols?.[name]) {
-    suggestion = `'${name}' is a protocol. ${enabled ? 'Enable' : 'Disable'} its module: wdk module ${verb} --name ${walletsFile.protocols[name].module}`
+  } else if (protocol) {
+    suggestion = `'${name}' is a protocol. ${enabled ? 'Enable' : 'Disable'} its module: wdk module ${verb} --name ${protocol.module}`
   }
   return setEnabled(
     'modules',
     name,
     enabled,
-    Boolean(walletsFile.modules?.[name] || getCustomModules()[name]),
+    hasOwn(walletsFile.modules, name) || hasOwn(getCustomModules(), name),
     new WdkCliError(`'${name}' is not a module.`, ErrorCode.INVALID_ARGUMENT, suggestion)
   )
 }

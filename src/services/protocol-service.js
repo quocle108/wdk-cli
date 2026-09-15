@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { walletsFile } from '../config/wdk-config.js'
-import { isDisabled } from './override-service.js'
+import { isDisabled, getOwn } from './override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
 /** @typedef {import('../config/wdk-config.js').WdkProtocolEntry} WdkProtocolEntry */
@@ -43,9 +43,9 @@ export function getProtocols () {
  * @throws {WdkCliError} When no protocol is registered under that name, or its module is disabled.
  */
 export function getProtocol (name) {
-  const protocol = getProtocols()[name]
+  const protocol = getOwn(getProtocols(), name)
   if (!protocol) {
-    const entry = walletsFile.protocols?.[name]
+    const entry = getOwn(walletsFile.protocols, name)
     if (entry) {
       throw new WdkCliError(
         `Protocol '${name}' is disabled.`,

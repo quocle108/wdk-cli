@@ -33,6 +33,32 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
 const OVERRIDES_KEY = 'overrides'
 
 /**
+ * Returns whether an object has `key` as its own property. Registry lookups
+ * must use this instead of `in` or `obj[key]`: those walk the prototype chain,
+ * so names like `constructor` would pass for real entries.
+ *
+ * @param {object | undefined} obj - The registry object.
+ * @param {string} key - The user-supplied name.
+ * @returns {boolean} True when `key` is an own property of `obj`.
+ */
+export function hasOwn (obj, key) {
+  return obj != null && Object.hasOwn(obj, key)
+}
+
+/**
+ * Returns the entry stored under `key`, or undefined when it is missing or
+ * only inherited.
+ *
+ * @template T
+ * @param {Record<string, T> | undefined} obj - The registry object.
+ * @param {string} key - The user-supplied name.
+ * @returns {T | undefined} The own entry.
+ */
+export function getOwn (obj, key) {
+  return hasOwn(obj, key) ? /** @type {Record<string, T>} */ (obj)[key] : undefined
+}
+
+/**
  * Returns the user's overrides of built-in registry entries, stored as deltas:
  * an absent entry means the packaged default applies unchanged.
  *
@@ -52,7 +78,7 @@ export function getOverrides () {
  * @returns {OverrideEntry | undefined} The override entry.
  */
 export function getOverride (kind, name) {
-  return getOverrides()[kind]?.[name]
+  return getOwn(getOverrides()[kind], name)
 }
 
 /**
@@ -67,7 +93,7 @@ export function getOverride (kind, name) {
 export function setOverride (kind, name, patch) {
   const overrides = getOverrides()
   /** @type {Record<string, unknown>} */
-  const entry = { ...overrides[kind]?.[name], ...patch }
+  const entry = { ...getOverride(kind, name), ...patch }
   for (const key of Object.keys(entry)) {
     if (entry[key] === undefined) delete entry[key]
   }
