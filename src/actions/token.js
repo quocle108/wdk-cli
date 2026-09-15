@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { validateNetwork } from '../config/networks.js'
+import { validateNetwork, getAllNetworks } from '../config/networks.js'
 import {
   getAllTokens,
   getTokensForNetwork,
@@ -240,7 +240,12 @@ export function listTokens (input = {}) {
       disabled: getDisabledTokens(input.network)
     }
   }
-  return { tokens: getAllTokens({ includeDisabled }), disabled: getDisabledTokens() }
+  const usable = getAllNetworks()
+  const tokens = Object.fromEntries(
+    Object.entries(getAllTokens({ includeDisabled })).filter(([network]) => Object.hasOwn(usable, network))
+  )
+  const disabled = getDisabledTokens().filter((id) => Object.hasOwn(usable, id.slice(0, id.indexOf('/'))))
+  return { tokens, disabled }
 }
 
 /**

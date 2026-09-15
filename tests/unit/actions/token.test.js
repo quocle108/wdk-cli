@@ -71,4 +71,20 @@ describe('listTokens', () => {
     expect(result.tokens.ethereum.usdt).toEqual(USDT_ENTRY)
     expect(result.disabled).toEqual(['ethereum/usdt'])
   })
+
+  it('leaves out the tokens of a disabled network and of a module-disabled one', () => {
+    withOverrides({
+      networks: { tron: { enabled: false } },
+      modules: { '@tetherto/wdk-wallet-solana': { enabled: false } },
+      tokens: { 'tron/usdt': { enabled: false }, 'ethereum/usdt': { enabled: false } }
+    })
+
+    const result = listTokens({ includeDisabled: true })
+
+    expect(result.tokens.tron).toBeUndefined()
+    expect(result.tokens.solana).toBeUndefined()
+    expect(result.tokens['tron-testnet'].trx.symbol).toBe('TRX')
+    expect(result.tokens.ethereum.usdt).toEqual(USDT_ENTRY)
+    expect(result.disabled).toEqual(['ethereum/usdt'])
+  })
 })
