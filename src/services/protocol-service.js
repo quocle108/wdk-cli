@@ -17,22 +17,37 @@ import { isDisabled, getOwn } from './override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
 /** @typedef {import('../config/wdk-config.js').WdkProtocolEntry} WdkProtocolEntry */
-/** @typedef {'swap' | 'bridge' | 'swidge'} ProtocolKind */
+/** @typedef {import('../config/wdk-config.js').ProtocolKind} ProtocolKind */
 
 /**
- * Returns all registered protocols, keyed by short name, from `wdk.config.json`.
- * Protocols whose module package is disabled are dropped.
+ * Returns all registered protocols, keyed by short name, from the `providers`
+ * registry in `wdk.config.json`. Protocols whose module package is disabled
+ * are dropped.
  *
  * @returns {Record<string, WdkProtocolEntry>} Protocol entries keyed by short name.
  */
 export function getProtocols () {
   /** @type {Record<string, WdkProtocolEntry>} */
   const result = {}
-  for (const [name, entry] of Object.entries(walletsFile.protocols || {})) {
+  for (const [name, entry] of Object.entries(walletsFile.providers || {})) {
     if (isDisabled('modules', entry.module)) continue
     result[name] = entry
   }
   return result
+}
+
+/**
+ * Returns the registered protocols whose declared kind can serve a request
+ * kind: swap and swidge protocols for a swap, bridge and swidge for a bridge.
+ * Decided from the registry alone, so no module is imported.
+ *
+ * @param {'swap' | 'bridge'} requestKind - The request kind.
+ * @returns {Record<string, WdkProtocolEntry>} Protocol entries keyed by short name.
+ */
+export function getProtocolsByKind (requestKind) {
+  return Object.fromEntries(
+    Object.entries(getProtocols()).filter(([, entry]) => servesRequest(entry.kind, requestKind))
+  )
 }
 
 /**
@@ -45,7 +60,7 @@ export function getProtocols () {
 export function getProtocol (name) {
   const protocol = getOwn(getProtocols(), name)
   if (!protocol) {
-    const entry = getOwn(walletsFile.protocols, name)
+    const entry = getOwn(walletsFile.providers, name)
     if (entry) {
       throw new WdkCliError(
         `Protocol '${name}' is disabled.`,
@@ -66,7 +81,7 @@ export function getProtocol (name) {
 /**
  * Resolves a protocol's effective config for a network: the protocol's general
  * `config` shallow-merged under any per-network override in
- * `networks.<network>.protocols.<name>`.
+ * `networks.<network>.providers.<name>`.
  *
  * @param {string} name - The protocol short name.
  * @param {string} network - The network name.
@@ -75,31 +90,16 @@ export function getProtocol (name) {
 export function resolveProtocolConfig (name, network) {
   const root = getProtocol(name).config || {}
   const perNetwork = /** @type {Record<string, unknown> | undefined} */ (
-    walletsFile.networks[network]?.protocols?.[name]
+    walletsFile.networks[network]?.providers?.[name]
   ) || {}
   return { ...root, ...perNetwork }
-}
-
-/**
- * Detects a protocol's kind from the quote method its class exposes. A swidge
- * class also implements swap and bridge, so `quoteSwidge` is checked first.
- *
- * @param {{ prototype?: Record<string, unknown> }} ProtocolClass - The protocol class.
- * @returns {ProtocolKind | null} The detected kind, or null when none matches.
- */
-export function detectKind (ProtocolClass) {
-  const has = (method) => typeof ProtocolClass?.prototype?.[method] === 'function'
-  if (has('quoteSwidge')) return 'swidge'
-  if (has('quoteSwap')) return 'swap'
-  if (has('quoteBridge')) return 'bridge'
-  return null
 }
 
 /**
  * Whether a protocol of the given kind can serve a request of the given kind.
  * A swidge protocol serves both swap and bridge requests.
  *
- * @param {ProtocolKind} protocolKind - The protocol's detected kind.
+ * @param {ProtocolKind} protocolKind - The protocol's declared kind.
  * @param {'swap' | 'bridge'} requestKind - The request's kind.
  * @returns {boolean} True when the protocol can serve the request.
  */

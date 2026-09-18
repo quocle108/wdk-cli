@@ -295,7 +295,7 @@ export function resolveRemoveTarget (name) {
  */
 export function setModuleEnabled (name, enabled) {
   const verb = enabled ? 'enable' : 'disable'
-  const protocol = getOwn(walletsFile.protocols, name)
+  const protocol = getOwn(walletsFile.providers, name)
   let suggestion = 'See package names with: wdk module list'
   if (hasOwn(walletsFile.networks, name)) {
     suggestion = `'${name}' is a network. Use: wdk network ${verb} --name ${name}`

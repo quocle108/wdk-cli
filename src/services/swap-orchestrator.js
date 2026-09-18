@@ -13,10 +13,9 @@
 // limitations under the License.
 
 import {
-  getProtocols,
+  getProtocolsByKind,
   getProtocol,
   resolveProtocolConfig,
-  detectKind,
   servesRequest,
   loadProtocolClass
 } from './protocol-service.js'
@@ -84,7 +83,7 @@ const instancesByAccount = new WeakMap()
  * @typedef {Object} CapableProtocol
  * @property {string} name - The protocol short name.
  * @property {ProtocolConstructor} ProtocolClass - The protocol's class (default export).
- * @property {ProtocolKind} kind - The protocol's own detected kind.
+ * @property {ProtocolKind} kind - The protocol's declared kind, from the registry.
  */
 
 /**
@@ -114,11 +113,14 @@ const instancesByAccount = new WeakMap()
  */
 
 /**
- * Resolves the set of protocols to quote for a request. With an explicit
- * `protocol` override the named protocol must exist, be installed, and be able
- * to serve the request — any of those failing throws. Without an override,
- * every configured protocol that is installed and capable is returned;
- * uninstalled protocols are skipped (lazy install), and an empty result throws.
+ * Resolves the set of protocols to quote for a request. Which protocols are
+ * capable is decided from the kind each one declares in the registry, before
+ * any module is imported. With an explicit `protocol` override the named
+ * protocol must exist, be declared for a kind that serves the request, and be
+ * installed — any of those failing throws. Without an override, every
+ * registered protocol declared for the request kind that is installed is
+ * returned; uninstalled protocols are skipped (lazy install), and an empty
+ * result throws.
  *
  * @param {'swap' | 'bridge'} requestKind - The kind of request being served.
  * @param {string} [protocol] - Optional protocol short name to force.
@@ -128,34 +130,27 @@ const instancesByAccount = new WeakMap()
 export async function resolveCandidates (requestKind, protocol) {
   if (protocol) {
     const entry = getProtocol(protocol)
-    const ProtocolClass = await loadProtocolClass(entry.module)
-    const kind = detectKind(ProtocolClass)
-    if (!kind || !servesRequest(kind, requestKind)) {
+    if (!servesRequest(entry.kind, requestKind)) {
       throw new WdkCliError(
         `Protocol '${protocol}' cannot ${requestKind}.`,
         ErrorCode.INVALID_ARGUMENT,
-        kind ? `It is a ${kind} protocol.` : 'It exposes no swap, bridge, or swidge quote method.'
+        `It is a ${entry.kind} protocol.`
       )
     }
-    const ctor = /** @type {ProtocolConstructor} */ (ProtocolClass)
-    return [{ name: protocol, ProtocolClass: ctor, kind }]
+    const ProtocolClass = /** @type {ProtocolConstructor} */ (await loadProtocolClass(entry.module))
+    return [{ name: protocol, ProtocolClass, kind: entry.kind }]
   }
 
-  const protocols = getProtocols()
   const resolved = await Promise.all(
-    Object.entries(protocols).map(async ([name, entry]) => {
-      let ProtocolClass
+    Object.entries(getProtocolsByKind(requestKind)).map(async ([name, entry]) => {
       try {
-        ProtocolClass = await loadProtocolClass(entry.module)
+        const ProtocolClass = /** @type {ProtocolConstructor} */ (await loadProtocolClass(entry.module))
+        return { name, ProtocolClass, kind: entry.kind }
       } catch (err) {
         // An uninstalled protocol is simply not a candidate (lazy install).
         if (err instanceof WdkCliError && err.code === ErrorCode.UNSUPPORTED_MODULE) return null
         throw err
       }
-      const kind = detectKind(ProtocolClass)
-      if (!kind || !servesRequest(kind, requestKind)) return null
-      const ctor = /** @type {ProtocolConstructor} */ (ProtocolClass)
-      return { name, ProtocolClass: ctor, kind }
     })
   )
 

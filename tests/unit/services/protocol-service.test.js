@@ -17,9 +17,9 @@ import { createRequire } from 'node:module'
 
 import {
   getProtocols,
+  getProtocolsByKind,
   getProtocol,
   resolveProtocolConfig,
-  detectKind,
   servesRequest
 } from '../../../src/services/protocol-service.js'
 import { configService } from '../../../src/services/config-service.js'
@@ -27,19 +27,31 @@ import { configService } from '../../../src/services/config-service.js'
 const require = createRequire(import.meta.url)
 const catalog = require('../../../wdk.config.json')
 
-const SWAP_CLASS = { prototype: { swap () {}, quoteSwap () {} } }
-const BRIDGE_CLASS = { prototype: { bridge () {}, quoteBridge () {} } }
-const SWIDGE_CLASS = { prototype: { swidge () {}, quoteSwidge () {}, quoteSwap () {}, quoteBridge () {} } }
-
 describe('getProtocols', () => {
-  it('returns the protocols declared in wdk.config.json', () => {
-    expect(getProtocols()).toEqual(catalog.protocols)
+  it('returns the providers declared in wdk.config.json, each with a declared kind', () => {
+    const protocols = getProtocols()
+
+    expect(protocols).toEqual(catalog.providers)
+    expect(protocols.velora.kind).toBe('swap')
+    expect(protocols.usdt0.kind).toBe('bridge')
+    expect(protocols.rhinofi.kind).toBe('swidge')
+    expect(protocols.symbiosis.kind).toBe('swidge')
+  })
+})
+
+describe('getProtocolsByKind', () => {
+  it('returns swap and swidge protocols for a swap request', () => {
+    expect(Object.keys(getProtocolsByKind('swap'))).toEqual(['velora', 'rhinofi', 'symbiosis'])
+  })
+
+  it('returns bridge and swidge protocols for a bridge request', () => {
+    expect(Object.keys(getProtocolsByKind('bridge'))).toEqual(['usdt0', 'rhinofi', 'symbiosis'])
   })
 })
 
 describe('getProtocol', () => {
   it('returns a catalog protocol entry', () => {
-    expect(getProtocol('velora')).toEqual(catalog.protocols.velora)
+    expect(getProtocol('velora')).toEqual(catalog.providers.velora)
   })
 
   it('rejects an unknown protocol with the available list', () => {
@@ -55,29 +67,11 @@ describe('getProtocol', () => {
 
 describe('resolveProtocolConfig', () => {
   it('returns the protocol general config when there is no per-network override', () => {
-    expect(resolveProtocolConfig('velora', 'ethereum')).toEqual(catalog.protocols.velora.config)
+    expect(resolveProtocolConfig('velora', 'ethereum')).toEqual(catalog.providers.velora.config)
   })
 
   it('merges the per-network protocol override over the general config', () => {
     expect(resolveProtocolConfig('symbiosis', 'ethereum')).toEqual({ partnerId: 'wdk', chain: 1 })
-  })
-})
-
-describe('detectKind', () => {
-  it('detects swap from quoteSwap', () => {
-    expect(detectKind(SWAP_CLASS)).toBe('swap')
-  })
-
-  it('detects bridge from quoteBridge', () => {
-    expect(detectKind(BRIDGE_CLASS)).toBe('bridge')
-  })
-
-  it('detects swidge from quoteSwidge even though swap/bridge are also present', () => {
-    expect(detectKind(SWIDGE_CLASS)).toBe('swidge')
-  })
-
-  it('returns null when no quote method is present', () => {
-    expect(detectKind({ prototype: {} })).toBe(null)
   })
 })
 
@@ -110,10 +104,11 @@ describe('protocol overrides', () => {
   }
 
   it('drops protocols whose module is disabled', () => {
-    withOverrides({ modules: { [catalog.protocols.velora.module]: { enabled: false } } })
+    withOverrides({ modules: { [catalog.providers.velora.module]: { enabled: false } } })
 
     expect(getProtocols().velora).toBeUndefined()
-    expect(getProtocols().usdt0).toEqual(catalog.protocols.usdt0)
+    expect(getProtocols().usdt0).toEqual(catalog.providers.usdt0)
+    expect(Object.keys(getProtocolsByKind('swap'))).toEqual(['rhinofi', 'symbiosis'])
     expect(() => getProtocol('velora')).toThrow("Protocol 'velora' is disabled.")
   })
 })

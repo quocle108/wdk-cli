@@ -26,8 +26,8 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
  *   Per-token indexer slugs live in `wdk.tokens.json` under `metadata.indexerSlug`.
  * @property {string} [chainId] - The CAIP-2 chain id (e.g. "eip155:1", "tron:mainnet").
  * @property {Record<string, unknown>} [config] - The per-network module configuration (RPC URL, chainId, etc.).
- * @property {Record<string, Record<string, unknown>>} [protocols] - Per-network protocol config overrides,
- *   keyed by protocol short name; shallow-merged over the protocol's general `config`.
+ * @property {Record<string, Record<string, unknown>>} [providers] - Per-network provider config overrides,
+ *   keyed by provider short name; shallow-merged over the provider's general `config`.
  */
 
 /**
@@ -53,10 +53,19 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
  */
 
 /**
+ * @typedef {'swap' | 'bridge' | 'swidge'} ProtocolKind
+ * What a protocol provider does: `swap` serves same-network swaps, `bridge`
+ * moves one token across networks, `swidge` serves both. Declared in the
+ * registry, never read from the module.
+ */
+
+/**
  * @typedef {Object} WdkProtocolEntry
+ * @property {ProtocolKind} kind - The declared kind; decides which requests the protocol is quoted for
+ *   and which quote/execute methods are called on it.
  * @property {string} module - The protocol module package name; its version is pinned in `modules`.
  * @property {Record<string, unknown>} [config] - General protocol config applied on every network
- *   (e.g. API keys); shallow-merged under any per-network override in `networks.<n>.protocols.<name>`.
+ *   (e.g. API keys); shallow-merged under any per-network override in `networks.<n>.providers.<name>`.
  */
 
 /**
@@ -64,7 +73,7 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
  * @property {number} version - The config file format version.
  * @property {Record<string, unknown>} defaults - The default global configuration.
  * @property {Record<string, WdkModuleEntry>} modules - The WDK module registry keyed by package name.
- * @property {Record<string, WdkProtocolEntry>} [protocols] - Swap/bridge/swidge protocols keyed by short name.
+ * @property {Record<string, WdkProtocolEntry>} [providers] - Swap/bridge/swidge protocol providers keyed by short name.
  * @property {Record<string, WdkNetworkEntry>} networks - The network definitions keyed by network name.
  */
 
