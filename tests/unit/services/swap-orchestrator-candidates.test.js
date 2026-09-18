@@ -33,7 +33,7 @@ const catalog = require('../../../wdk.config.json')
 class Opaque {}
 
 const notInstalled = (module) =>
-  new WdkCliError(`Protocol module '${module}' is not installed.`, ErrorCode.UNSUPPORTED_MODULE)
+  new WdkCliError(`Module '${module}' is not installed.`, ErrorCode.UNSUPPORTED_MODULE)
 
 beforeEach(() => {
   loadProtocolClass.mockReset()
@@ -44,24 +44,31 @@ describe('resolveCandidates', () => {
   it('quotes the protocols declared swap or swidge for a swap, with the declared kind', async () => {
     const candidates = await resolveCandidates('swap')
 
-    expect(candidates.map((c) => [c.name, c.kind])).toEqual([
-      ['velora', 'swap'],
-      ['rhinofi', 'swidge'],
-      ['symbiosis', 'swidge']
+    expect(candidates).toEqual([
+      { name: 'velora', kind: 'swap', ProtocolClass: Opaque },
+      { name: 'rhinofi', kind: 'swidge', ProtocolClass: Opaque },
+      { name: 'symbiosis', kind: 'swidge', ProtocolClass: Opaque }
     ])
-    expect(candidates.every((c) => c.ProtocolClass === Opaque)).toBe(true)
+    expect(loadProtocolClass).toHaveBeenCalledWith(catalog.providers.velora.module)
+    expect(loadProtocolClass).toHaveBeenCalledWith(catalog.providers.rhinofi.module)
+    expect(loadProtocolClass).toHaveBeenCalledWith(catalog.providers.symbiosis.module)
   })
 
   it('quotes the protocols declared bridge or swidge for a bridge', async () => {
     const candidates = await resolveCandidates('bridge')
 
-    expect(candidates.map((c) => c.name)).toEqual(['usdt0', 'rhinofi', 'symbiosis'])
+    expect(candidates).toEqual([
+      { name: 'usdt0', kind: 'bridge', ProtocolClass: Opaque },
+      { name: 'rhinofi', kind: 'swidge', ProtocolClass: Opaque },
+      { name: 'symbiosis', kind: 'swidge', ProtocolClass: Opaque }
+    ])
   })
 
   it('never imports a protocol whose declared kind cannot serve the request', async () => {
     await resolveCandidates('swap')
 
     expect(loadProtocolClass).not.toHaveBeenCalledWith(catalog.providers.usdt0.module)
+    expect(loadProtocolClass).toHaveBeenCalledTimes(3)
   })
 
   it('skips a protocol whose module is not installed', async () => {
@@ -72,7 +79,10 @@ describe('resolveCandidates', () => {
 
     const candidates = await resolveCandidates('swap')
 
-    expect(candidates.map((c) => c.name)).toEqual(['rhinofi', 'symbiosis'])
+    expect(candidates).toEqual([
+      { name: 'rhinofi', kind: 'swidge', ProtocolClass: Opaque },
+      { name: 'symbiosis', kind: 'swidge', ProtocolClass: Opaque }
+    ])
   })
 
   it('throws when no protocol declared for the request kind is installed', async () => {

@@ -300,7 +300,7 @@ export function setModuleEnabled (name, enabled) {
   if (hasOwn(walletsFile.networks, name)) {
     suggestion = `'${name}' is a network. Use: wdk network ${verb} --name ${name}`
   } else if (protocol) {
-    suggestion = `'${name}' is a protocol. ${enabled ? 'Enable' : 'Disable'} its module: wdk module ${verb} --name ${protocol.module}`
+    suggestion = `'${name}' is a provider. Use: wdk provider ${verb} --name ${name}`
   }
   return setEnabled(
     'modules',

@@ -66,6 +66,8 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
  * @property {string} module - The protocol module package name; its version is pinned in `modules`.
  * @property {Record<string, unknown>} [config] - General protocol config applied on every network
  *   (e.g. API keys); shallow-merged under any per-network override in `networks.<n>.providers.<name>`.
+ * @property {Record<string, Record<string, unknown>>} [networks] - Per-network config overrides keyed by
+ *   network name. Used by user-added providers, which cannot edit the packaged network entries.
  */
 
 /**

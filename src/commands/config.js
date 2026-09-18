@@ -25,14 +25,16 @@ import { lockWalletsAfterChange } from '../ui/session.js'
 /** @typedef {import('commander').Command} Command */
 
 /**
- * Returns true when the given config path affects the SDK's per-network wallet registration.
- * Changes under `networks.*` require the daemon to be locked so stale wallet managers are dropped.
+ * Returns true when the given config path affects what the daemon holds in
+ * memory: `networks.*` feeds the per-network wallet registration, and
+ * `providers.*` the protocol instances it caches per account. Both require the
+ * daemon to be locked so the stale ones are dropped.
  *
  * @param {string} fullKey - The dot-separated config key being written.
- * @returns {boolean} True when the path falls under `networks.`.
+ * @returns {boolean} True when the path falls under `networks` or `providers`.
  */
 function affectsSdkRegistration (fullKey) {
-  return fullKey === 'networks' || fullKey.startsWith('networks.')
+  return ['networks', 'providers'].some((root) => fullKey === root || fullKey.startsWith(`${root}.`))
 }
 
 /**
@@ -302,17 +304,19 @@ export function registerConfigCommand (program) {
 
       if (all) {
         // Preserve user-identity data across the reset — these are user-chosen
-        // records, not configuration values: which wallet is the default,
-        // user-added networks, and user-added tokens.
+        // records, not configuration values: which wallet is the default, and
+        // user-added networks, tokens, and providers.
         const preservedDefaultWallet = configService.getDefaultWallet()
         const preservedCustomNetworks = configService.get('customNetworks')
         const preservedCustomTokens = configService.get('customTokens')
+        const preservedCustomProviders = configService.get('customProviders')
 
         configService.clear()
 
         if (preservedDefaultWallet) configService.setDefaultWallet(preservedDefaultWallet)
         if (preservedCustomNetworks) configService.set('customNetworks', preservedCustomNetworks)
         if (preservedCustomTokens) configService.set('customTokens', preservedCustomTokens)
+        if (preservedCustomProviders) configService.set('customProviders', preservedCustomProviders)
 
         if (program.opts().json) {
           const walletsLocked = await lockWalletsAfterChange(true)

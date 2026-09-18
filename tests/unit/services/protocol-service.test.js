@@ -19,13 +19,38 @@ import {
   getProtocols,
   getProtocolsByKind,
   getProtocol,
+  getProtocolsIncludingDisabled,
   resolveProtocolConfig,
+  getProviderNetworks,
+  assertImplementsKind,
+  isProviderDisabled,
+  setProviderEnabled,
   servesRequest
 } from '../../../src/services/protocol-service.js'
 import { configService } from '../../../src/services/config-service.js'
 
 const require = createRequire(import.meta.url)
 const catalog = require('../../../wdk.config.json')
+
+const PACKAGED_NAMES = Object.keys(catalog.providers)
+const CUSTOM_MODULE = '@tetherto/wdk-wallet-ton'
+const VELORA_MODULE = catalog.providers.velora.module
+
+afterEach(() => {
+  jest.restoreAllMocks()
+})
+
+/**
+ * Mocks config reads from a map of exact dot-path key to value, so each test
+ * declares only the keys the code under test reads.
+ *
+ * @param {Record<string, unknown>} values
+ */
+function withConfig (values) {
+  jest.spyOn(configService, 'get').mockImplementation((key) =>
+    Object.hasOwn(values, key) ? values[key] : undefined
+  )
+}
 
 describe('getProtocols', () => {
   it('returns the providers declared in wdk.config.json, each with a declared kind', () => {
@@ -75,6 +100,144 @@ describe('resolveProtocolConfig', () => {
   })
 })
 
+describe('resolveProtocolConfig user layers', () => {
+  it('merges the user general config over the packaged one', () => {
+    withConfig({ 'providers.rhinofi.config': { apiKey: 'user-key' } })
+
+    expect(resolveProtocolConfig('rhinofi')).toEqual({ apiKey: 'user-key' })
+  })
+
+  it('returns only the general layers when no network is given', () => {
+    withConfig({ 'providers.symbiosis.config': { apiKey: 'user-key' } })
+
+    expect(resolveProtocolConfig('symbiosis')).toEqual({ partnerId: 'wdk', apiKey: 'user-key' })
+  })
+
+  it('lets the user per-network layer win over every other layer', () => {
+    withConfig({
+      'providers.symbiosis.config': { partnerId: 'user-general', slippage: 1 },
+      'providers.symbiosis.networks.ethereum': { partnerId: 'user-ethereum', chain: 99 }
+    })
+
+    expect(resolveProtocolConfig('symbiosis', 'ethereum')).toEqual({
+      partnerId: 'user-ethereum',
+      slippage: 1,
+      chain: 99
+    })
+  })
+
+  it('applies the user general layer on a network with no override of its own', () => {
+    withConfig({ 'providers.symbiosis.config': { apiKey: 'user-key' } })
+
+    expect(resolveProtocolConfig('symbiosis', 'polygon')).toEqual({
+      partnerId: 'wdk',
+      apiKey: 'user-key',
+      chain: 137
+    })
+  })
+
+  it('configures a network the packaged file says nothing about', () => {
+    withConfig({ 'providers.velora.networks.bsc': { swapMaxFee: 42 } })
+
+    expect(resolveProtocolConfig('velora', 'bsc')).toEqual({ swapMaxFee: 42 })
+    expect(resolveProtocolConfig('velora', 'ethereum')).toEqual({})
+  })
+
+  it('ignores a user value that is not an object', () => {
+    withConfig({ 'providers.symbiosis.config': 'oops' })
+
+    expect(resolveProtocolConfig('symbiosis', 'ethereum')).toEqual({ partnerId: 'wdk', chain: 1 })
+  })
+
+  it('resolves a disabled protocol only when asked', () => {
+    withConfig({ overrides: { modules: { [catalog.providers.velora.module]: { enabled: false } } } })
+
+    expect(() => resolveProtocolConfig('velora', 'ethereum')).toThrow("Protocol 'velora' is disabled.")
+    expect(resolveProtocolConfig('velora', 'ethereum', { includeDisabled: true })).toEqual({})
+  })
+
+  it('reports an unknown protocol when resolving a disabled one', () => {
+    withConfig({})
+
+    expect(() => resolveProtocolConfig('nope', 'ethereum', { includeDisabled: true })).toThrow(
+      "Unknown protocol 'nope'."
+    )
+  })
+})
+
+describe('getProviderNetworks', () => {
+  /** The networks whose packaged entry carries a symbiosis override, in file order. */
+  const SYMBIOSIS_NETWORKS = ['ethereum', 'polygon', 'arbitrum', 'base', 'bsc', 'avalanche']
+
+  it('lists the packaged networks, then the ones the user configured', () => {
+    withConfig({ 'providers.symbiosis.networks': { optimism: { chain: 10 } } })
+
+    expect(getProviderNetworks('symbiosis', catalog.providers.symbiosis)).toEqual([
+      ...SYMBIOSIS_NETWORKS,
+      'optimism'
+    ])
+  })
+
+  it('lists the packaged networks alone when the user configured none', () => {
+    withConfig({})
+
+    expect(getProviderNetworks('symbiosis', catalog.providers.symbiosis)).toEqual(SYMBIOSIS_NETWORKS)
+  })
+
+  it('lists a custom entry own networks', () => {
+    withConfig({})
+
+    const entry = { kind: 'swidge', module: CUSTOM_MODULE, networks: { ethereum: {}, optimism: {} } }
+
+    expect(getProviderNetworks('lifi', entry)).toEqual(['ethereum', 'optimism'])
+  })
+})
+
+describe('assertImplementsKind', () => {
+  const classWith = (...methods) => {
+    const Cls = class {}
+    for (const method of methods) Cls.prototype[method] = () => {}
+    return Cls
+  }
+
+  it.each([
+    ['swap', ['quoteSwap', 'swap']],
+    ['bridge', ['quoteBridge', 'bridge']],
+    ['swidge', ['quoteSwidge', 'swidge']]
+  ])('accepts a class implementing the declared kind %s', (kind, methods) => {
+    expect(() => assertImplementsKind('x', kind, classWith(...methods))).not.toThrow()
+  })
+
+  it('names the missing methods and the kind the module does implement', () => {
+    expect(() => assertImplementsKind('lifi', 'swap', classWith('quoteBridge', 'bridge'))).toThrow(
+      expect.objectContaining({
+        message: "Provider 'lifi' is declared swap, but its module does not implement quoteSwap and swap.",
+        suggestion: 'Its module implements bridge. Register it with one of those kinds.'
+      })
+    )
+  })
+
+  it('names only the method that is missing when the class is half-implemented', () => {
+    expect(() => assertImplementsKind('lifi', 'swap', classWith('quoteSwap'))).toThrow(
+      "Provider 'lifi' is declared swap, but its module does not implement swap."
+    )
+  })
+
+  it('reports a class that implements no protocol interface', () => {
+    expect(() => assertImplementsKind('lifi', 'swap', classWith())).toThrow(
+      expect.objectContaining({
+        suggestion: 'Its module implements no swap, bridge, or swidge interface.'
+      })
+    )
+  })
+
+  it('accepts a swidge class declared swidge even though it also swaps and bridges', () => {
+    const swidge = classWith('quoteSwidge', 'swidge', 'quoteSwap', 'swap', 'quoteBridge', 'bridge')
+
+    expect(() => assertImplementsKind('x', 'swidge', swidge)).not.toThrow()
+  })
+})
+
 describe('servesRequest', () => {
   it('lets a swidge protocol serve both swap and bridge requests', () => {
     expect(servesRequest('swidge', 'swap')).toBe(true)
@@ -93,22 +256,214 @@ describe('servesRequest', () => {
 })
 
 describe('protocol overrides', () => {
-  afterEach(() => {
-    jest.restoreAllMocks()
-  })
-
-  const withOverrides = (overrides) => {
-    jest.spyOn(configService, 'get').mockImplementation((key) =>
-      key === 'overrides' ? overrides : undefined
-    )
-  }
-
   it('drops protocols whose module is disabled', () => {
-    withOverrides({ modules: { [catalog.providers.velora.module]: { enabled: false } } })
+    withConfig({ overrides: { modules: { [VELORA_MODULE]: { enabled: false } } } })
 
     expect(getProtocols().velora).toBeUndefined()
     expect(getProtocols().usdt0).toEqual(catalog.providers.usdt0)
     expect(Object.keys(getProtocolsByKind('swap'))).toEqual(['rhinofi', 'symbiosis'])
     expect(() => getProtocol('velora')).toThrow("Protocol 'velora' is disabled.")
   })
+})
+
+describe('provider enable and disable', () => {
+  const LIFI = { kind: 'swidge', module: CUSTOM_MODULE }
+
+  let store
+
+  beforeEach(() => {
+    store = {}
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      Object.hasOwn(store, key) ? store[key] : undefined
+    )
+    jest.spyOn(configService, 'set').mockImplementation((key, value) => { store[key] = value })
+    jest.spyOn(configService, 'delete').mockImplementation((key) => { delete store[key] })
+  })
+
+  it('writes a disabled delta and drops the provider from routing', () => {
+    expect(setProviderEnabled('velora', false)).toBe(false)
+
+    expect(store.overrides).toEqual({ providers: { velora: { enabled: false } } })
+    expect(getProtocols().velora).toBeUndefined()
+    expect(Object.keys(getProtocolsByKind('swap'))).toEqual(['rhinofi', 'symbiosis'])
+  })
+
+  it('removes the delta on enable, leaving no leftover key', () => {
+    store.overrides = { providers: { velora: { enabled: false } } }
+
+    expect(setProviderEnabled('velora', true)).toBe(false)
+
+    expect(store.overrides).toBeUndefined()
+    expect(getProtocols().velora).toEqual(catalog.providers.velora)
+  })
+
+  it('points a disabled provider at its own enable command', () => {
+    store.overrides = { providers: { velora: { enabled: false } } }
+
+    expect(() => getProtocol('velora')).toThrow(
+      expect.objectContaining({
+        message: "Protocol 'velora' is disabled.",
+        suggestion: 'Enable it with: wdk provider enable --name velora'
+      })
+    )
+  })
+
+  it('points a provider hidden by its module at the module instead', () => {
+    store.overrides = { modules: { [VELORA_MODULE]: { enabled: false } } }
+
+    expect(() => getProtocol('velora')).toThrow(
+      expect.objectContaining({
+        suggestion: `Enable its module with: wdk module enable --name ${VELORA_MODULE}`
+      })
+    )
+  })
+
+  it('refuses to toggle a provider hidden by its disabled module', () => {
+    store.overrides = { modules: { [VELORA_MODULE]: { enabled: false } } }
+
+    for (const enabled of [true, false]) {
+      expect(() => setProviderEnabled('velora', enabled)).toThrow(
+        expect.objectContaining({
+          message: "Provider 'velora' is disabled by its module.",
+          suggestion: `Enable its module with: wdk module enable --name ${VELORA_MODULE}`
+        })
+      )
+    }
+  })
+
+  it('rejects a no-op toggle', () => {
+    expect(() => setProviderEnabled('velora', true)).toThrow("'velora' is already enabled.")
+
+    store.overrides = { providers: { velora: { enabled: false } } }
+    expect(() => setProviderEnabled('velora', false)).toThrow("'velora' is already disabled.")
+  })
+
+  it('clears a stale override when enabling a name that no longer exists', () => {
+    store.overrides = { providers: { gone: { enabled: false } } }
+
+    expect(setProviderEnabled('gone', true)).toBe(true)
+    expect(store.overrides).toBeUndefined()
+  })
+
+  it('rejects a module package name and points at wdk module', () => {
+    expect(() => setProviderEnabled(VELORA_MODULE, false)).toThrow(
+      expect.objectContaining({
+        message: `'${VELORA_MODULE}' is not a provider.`,
+        suggestion: `'${VELORA_MODULE}' is a module. Use: wdk module disable --name ${VELORA_MODULE}`
+      })
+    )
+  })
+
+  it('rejects an unknown name', () => {
+    expect(() => setProviderEnabled('nope', false)).toThrow(
+      expect.objectContaining({
+        message: "'nope' is not a provider.",
+        suggestion: 'See provider names with: wdk provider list'
+      })
+    )
+  })
+
+  it('toggles a custom provider too', () => {
+    store.customProviders = { lifi: LIFI }
+
+    expect(setProviderEnabled('lifi', false)).toBe(false)
+    expect(getProtocols().lifi).toBeUndefined()
+  })
+
+  it('reports which providers the user disabled directly', () => {
+    store.overrides = { providers: { velora: { enabled: false } } }
+
+    expect(isProviderDisabled('velora')).toBe(true)
+    expect(isProviderDisabled('usdt0')).toBe(false)
+    expect(isProviderDisabled('nope')).toBe(false)
+  })
+})
+
+describe('getProtocolsIncludingDisabled', () => {
+  const WITHOUT_VELORA = PACKAGED_NAMES.filter((name) => name !== 'velora')
+
+  it('keeps a provider the user disabled directly', () => {
+    withConfig({ overrides: { providers: { velora: { enabled: false } } } })
+
+    expect(Object.keys(getProtocolsIncludingDisabled())).toEqual(PACKAGED_NAMES)
+  })
+
+  it('leaves out a provider hidden by its disabled module', () => {
+    withConfig({ overrides: { modules: { [VELORA_MODULE]: { enabled: false } } } })
+
+    expect(Object.keys(getProtocolsIncludingDisabled())).toEqual(WITHOUT_VELORA)
+  })
+
+  it('leaves out a provider hidden by its module even when it has its own override', () => {
+    withConfig({
+      overrides: {
+        providers: { velora: { enabled: false } },
+        modules: { [VELORA_MODULE]: { enabled: false } }
+      }
+    })
+
+    expect(Object.keys(getProtocolsIncludingDisabled())).toEqual(WITHOUT_VELORA)
+  })
+})
+
+describe('custom providers', () => {
+  const LIFI = {
+    kind: 'swidge',
+    module: CUSTOM_MODULE,
+    config: { integrator: 'wdk' },
+    networks: { ethereum: { chain: 1 }, optimism: { chain: 10 } }
+  }
+
+  it('merges custom providers after the packaged ones', () => {
+    withConfig({ customProviders: { lifi: LIFI } })
+
+    const protocols = getProtocols()
+
+    expect(protocols.lifi).toEqual(LIFI)
+    expect(Object.keys(protocols)).toEqual([...PACKAGED_NAMES, 'lifi'])
+  })
+
+  it('quotes a custom provider for the requests its declared kind serves', () => {
+    withConfig({ customProviders: { lifi: LIFI } })
+
+    expect(Object.keys(getProtocolsByKind('swap'))).toEqual(['velora', 'rhinofi', 'symbiosis', 'lifi'])
+    expect(Object.keys(getProtocolsByKind('bridge'))).toEqual(['usdt0', 'rhinofi', 'symbiosis', 'lifi'])
+  })
+
+  it('lets a packaged entry win over a custom one of the same name', () => {
+    withConfig({ customProviders: { velora: LIFI } })
+
+    expect(getProtocol('velora')).toEqual(catalog.providers.velora)
+  })
+
+  it('drops a custom provider whose module is disabled', () => {
+    withConfig({
+      customProviders: { lifi: LIFI },
+      overrides: { modules: { [CUSTOM_MODULE]: { enabled: false } } }
+    })
+
+    expect(getProtocols().lifi).toBeUndefined()
+    expect(() => getProtocol('lifi')).toThrow(
+      expect.objectContaining({
+        message: "Protocol 'lifi' is disabled.",
+        suggestion: `Enable its module with: wdk module enable --name ${CUSTOM_MODULE}`
+      })
+    )
+  })
+
+  it('takes a custom provider per-network config from its own entry', () => {
+    withConfig({ customProviders: { lifi: LIFI } })
+
+    expect(resolveProtocolConfig('lifi', 'ethereum')).toEqual({ integrator: 'wdk', chain: 1 })
+    expect(resolveProtocolConfig('lifi', 'optimism')).toEqual({ integrator: 'wdk', chain: 10 })
+    expect(resolveProtocolConfig('lifi', 'polygon')).toEqual({ integrator: 'wdk' })
+  })
+
+  it.each(['constructor', '__proto__'])(
+    'does not resolve the inherited object property %s as a provider', (name) => {
+      withConfig({ customProviders: {} })
+
+      expect(() => getProtocol(name)).toThrow(`Unknown protocol '${name}'.`)
+    }
+  )
 })
