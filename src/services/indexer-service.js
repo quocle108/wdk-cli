@@ -16,6 +16,7 @@ import { configService } from './config-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { walletsFile } from '../config/wdk-config.js'
 import { getAllTokens, getIndexerCode, getTokensSupportedBy } from './token-service.js'
+import { getOwn } from './override-service.js'
 
 /**
  * @typedef {Object} TokenTransfer
@@ -90,8 +91,7 @@ export const INDEXER_TOKENS = [
  * @returns {string | undefined} The chain slug, or undefined if not configured.
  */
 export function getIndexerSlug (network) {
-  if (BUILTIN_INDEXER_SLUGS[network]) return BUILTIN_INDEXER_SLUGS[network]
-  return /** @type {string | undefined} */ (
+  return getOwn(BUILTIN_INDEXER_SLUGS, network) ?? /** @type {string | undefined} */ (
     configService.get(`customNetworks.${network}.indexerSlug`)
   )
 }
