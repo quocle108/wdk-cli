@@ -34,6 +34,7 @@ import { formatAmount } from '../ui/formatters.js'
  * @property {number} decimals - Token decimal places.
  * @property {string} formatted - Human-readable formatted balance with symbol.
  * @property {number} usd - Approximate USD value (0 if price unavailable).
+ * @property {string} address - The account address the balance belongs to.
  * @property {string} [token] - Token contract address, present when a token was queried.
  */
 
@@ -65,6 +66,7 @@ export async function getBalance (input) {
     decimals: r.decimals,
     formatted: formatAmount(balanceBigInt, r.decimals, r.symbol),
     usd,
+    address: r.address,
     ...(input.token ? { token: input.token } : {})
   }
 }
@@ -109,7 +111,6 @@ export async function getAllBalances (input) {
 
   const tasks = names.map(async (network) => {
     try {
-      const address = await daemonClient.getAddress(network, input.index, wallet)
       const r = await daemonClient.getBalance(network, input.index, undefined, wallet)
       const balanceBigInt = BigInt(r.balance)
       let usd = 0
@@ -122,7 +123,7 @@ export async function getAllBalances (input) {
       }
       return {
         network,
-        address,
+        address: r.address,
         balance: r.balance,
         symbol: r.symbol,
         decimals: r.decimals,
