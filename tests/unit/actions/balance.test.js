@@ -24,7 +24,7 @@ jest.unstable_mockModule('../../../src/daemon/client.js', () => ({
 
 jest.unstable_mockModule('../../../src/services/price-service.js', () => ({ convertToUsd }))
 
-const { getBalance } = await import('../../../src/actions/balance.js')
+const { getBalance, getAllBalances } = await import('../../../src/actions/balance.js')
 
 const DUMMY_ADDRESS = '0x1111111111111111111111111111111111111111'
 const DUMMY_BALANCE = { balance: '1000000000000000000', symbol: 'ETH', decimals: 18, address: DUMMY_ADDRESS }
@@ -72,5 +72,32 @@ describe('getBalance', () => {
       address: DUMMY_ADDRESS
     })
     expect(convertToUsd).not.toHaveBeenCalled()
+  })
+})
+
+describe('getAllBalances', () => {
+  it('takes each address from the balance response instead of a separate lookup', async () => {
+    daemonGetBalance.mockImplementation(async (network) =>
+      network === 'ethereum' ? DUMMY_BALANCE : Promise.reject(new Error('dummy provider down'))
+    )
+    convertToUsd.mockResolvedValue(2000)
+
+    const result = await getAllBalances({ index: 0 })
+
+    expect(result).toEqual({
+      index: 0,
+      type: 'mainnet',
+      balances: [{
+        network: 'ethereum',
+        address: DUMMY_ADDRESS,
+        balance: '1000000000000000000',
+        symbol: 'ETH',
+        decimals: 18,
+        formatted: '1 ETH',
+        usd: 2000
+      }],
+      totalUsd: 2000
+    })
+    expect(daemonGetBalance).toHaveBeenCalledWith('ethereum', 0, undefined, 'main')
   })
 })

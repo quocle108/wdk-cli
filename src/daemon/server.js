@@ -716,11 +716,13 @@ export class WalletDaemon {
     const wdk = this.#requireWallet(wallet)
     const account = await wdk.getAccount(req.network, req.index ?? 0)
 
+    const from = await account.getAddress()
+
     const r = /** @type {import('./protocol.js').QuoteRequest} */ (req.request)
     const destAccount = r.toNetwork && r.toNetwork !== req.network
       ? await wdk.getAccount(r.toNetwork, req.index ?? 0)
       : account
-    const recipient = r.recipient || await destAccount.getAddress()
+    const recipient = r.recipient || (destAccount === account ? from : await destAccount.getAddress())
     const request = /** @type {SwapRequest} */ ({
       fromToken: r.fromToken,
       toToken: r.toToken,
@@ -730,7 +732,7 @@ export class WalletDaemon {
       recipient
     })
     const context = { fromToken: r.fromSymbol, toToken: r.toSymbol, toNetwork: r.toNetwork }
-    return { account, from: await account.getAddress(), request, context }
+    return { account, from, request, context }
   }
 
   /**
