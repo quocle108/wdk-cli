@@ -162,8 +162,9 @@ wdk swap --network ethereum --from-token usdt --to-token eth --amount-in 100 --j
 Rules:
 
 1. `swap` takes `--from-token`/`--to-token` (`--amount-in` or `--amount-out`; add `--to-network` for cross-chain); `bridge` takes one `--token` + `--to-network` with exact-in `--amount`.
-2. Best-route by default; the `skipped` array lists protocols that failed and why. Pass `--protocol <name>` to force one.
+2. Best-route by default; the `skipped` array lists protocols that failed and why. Only pass `--protocol <name>` when the user names one — `wdk provider list --json` (read-only) shows the valid names, each with the `kind` it serves and whether it is enabled.
 3. Execute moves funds — treat like Send: dry-run, show the user, confirm.
+4. A `skipped` reason that is a configuration problem (missing API key, missing chain) is the user's to fix with `wdk config set --key providers.<name>.config.<key> --value <value>`, or `providers.<name>.networks.<network>.<key>` for one chain only. Surface the command; never run it.
 
 ### Transaction History
 
@@ -251,7 +252,7 @@ Errors are returned as structured JSON: `{"error": "...", "code": "...", "sugges
 | `WALLET_LOCKED` / `WALLET_NOT_UNLOCKED` | Wallet locked or no session | Ask user to run `wdk wallet unlock --name <name>` |
 | `INSUFFICIENT_FUNDS` | Not enough balance | Inform user, show current balance |
 | `INVALID_AMOUNT` | Malformed / negative / over-precision amount | Re-prompt user; respect token decimals (see `wdk token info`) |
-| `INVALID_ARGUMENT` | Bad/missing CLI flag | Read the message; common cases: missing `--key`, mutually exclusive flags |
+| `INVALID_ARGUMENT` | Bad/missing CLI flag, or an unusable `--protocol` | Read the message; common cases: missing `--key`, mutually exclusive flags. For `--protocol`, check `wdk provider list` — the name may be unregistered, disabled, or of a `kind` that serves the other operation. When it is disabled the hint names the enable command: suggest it, never run it |
 | `TOKEN_NOT_SUPPORTED` | Unregistered `--token` | Ask user to register: `wdk token add '{"network":"<n>","token":"<t>","symbol":"...","decimals":...,"isNative":...,...}'` |
 | `NETWORK_NOT_SUPPORTED` | Unknown network name, **or** the network exists but has no `indexerSlug` configured (so `get history` is unavailable) | If the message says "is disabled", the user disabled the network or its module — the error hint names the exact enable command to suggest (never run it yourself). On a disabled network `wdk token list`, `wdk token info` and `wdk method list` fail the same way; report that rather than retrying. If the network is unknown, ask the user to run `wdk network list`. If the message says "not supported by the indexer API", the network is missing its `indexerSlug` — ask the user to delete and recreate it with `--indexer-slug <chain>` (the chain slug the WDK indexer uses, usually the same as the network name). |
 | `NETWORK_ERROR` (403 from indexer) | Missing/invalid API key | Ask user: `wdk config set --key indexer.apiKey --value <key>` |
@@ -265,7 +266,8 @@ These actions are **strictly forbidden** for AI agents. Do not attempt them unde
 1. **NEVER create or import wallets** — not under any circumstances. The `--seed-stdin` and `--new-passphrase-stdin` flags exist for human-operated scripts only (provisioning, CI, backup tooling) — agents must never invoke them, even with secrets provided by the user in chat. Tell the user to do it themselves.
 2. **NEVER unlock the wallet** — `wdk wallet unlock` requires passphrase input. If the wallet is locked, tell the user to unlock it.
 3. **NEVER export or ask for seed phrases or passphrases** — this is sensitive data that must never be logged, stored, or transmitted.
-4. **NEVER mutate the network or token registry** — `wdk network create / delete`, `wdk token add / delete`. These modify persistent user config and are user-driven decisions. If a command needs a registry change, surface the suggestion to the user and let them run it.
-5. **NEVER run `wdk module add / remove / enable / disable`, `wdk network enable / disable`, or `wdk token enable / disable`** — add and remove download and install executable code that runs inside the wallet daemon; enable and disable change which modules, networks, and tokens the CLI uses (and lock all wallets). If something is missing or disabled, tell the user and let them decide.
+4. **NEVER mutate the network, token, or provider registry** — `wdk network create / delete`, `wdk token add / delete`, `wdk provider add / delete`. These modify persistent user config and are user-driven decisions. If a command needs a registry change, surface the suggestion to the user and let them run it.
+5. **NEVER run `wdk module add / remove / enable / disable`, `wdk network enable / disable`, `wdk provider enable / disable`, or `wdk token enable / disable`** — add and remove download and install executable code that runs inside the wallet daemon; `wdk provider add` registers an installed module to run there too; enable and disable change which modules, networks, providers, and tokens the CLI uses (and lock all wallets). If something is missing or disabled, tell the user and let them decide.
+6. **NEVER run `wdk config set / reset`** — every provider credential and network setting is persistent user config, and each write locks all wallets. Surface the exact command for the user to run.
 
 These restrictions exist for security. Only the human user can perform wallet management through interactive terminal input (or via `WDK_PASSPHRASE` env var in automated environments).
