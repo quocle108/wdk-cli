@@ -30,7 +30,7 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  */
 
 /** Every protocol kind the registry accepts, in the order listings show them. */
-export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge'])
+export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat'])
 
 /**
  * The methods a protocol class must expose to serve each kind.
@@ -40,7 +40,8 @@ export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', '
 const KIND_METHODS = {
   swap: ['quoteSwap', 'swap'],
   bridge: ['quoteBridge', 'bridge'],
-  swidge: ['quoteSwidge', 'swidge']
+  swidge: ['quoteSwidge', 'swidge'],
+  fiat: ['quoteBuy', 'buy', 'quoteSell', 'sell']
 }
 
 /**

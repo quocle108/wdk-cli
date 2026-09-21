@@ -135,9 +135,9 @@ describe('validateProviderSpec', () => {
     )
   })
 
-  it.each([undefined, 'fiat', 'dex', 7])('rejects the kind %p with the accepted list', (kind) => {
+  it.each([undefined, 'dex', 'price', 7])('rejects the kind %p with the accepted list', (kind) => {
     expect(() => validateProviderSpec({ name: 'lifi', kind, module: CUSTOM_MODULE })).toThrow(
-      'Provider spec "kind" must be one of: swap, bridge, swidge'
+      'Provider spec "kind" must be one of: swap, bridge, swidge, fiat'
     )
   })
 
@@ -234,10 +234,17 @@ describe('listProviders', () => {
 
     expect(result.count).toBe(PACKAGED_NAMES.length)
     expect(result.providers.map((p) => p.name)).toEqual(PACKAGED_NAMES)
-    expect(result.providers[0]).toEqual({
+    expect(result.providers.find((p) => p.name === 'velora')).toEqual({
       name: 'velora',
       kind: 'swap',
       module: catalog.providers.velora.module,
+      source: 'built-in',
+      enabled: true
+    })
+    expect(result.providers.find((p) => p.name === 'moonpay')).toEqual({
+      name: 'moonpay',
+      kind: 'fiat',
+      module: catalog.providers.moonpay.module,
       source: 'built-in',
       enabled: true
     })

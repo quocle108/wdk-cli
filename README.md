@@ -379,9 +379,9 @@ wdk sell --network polygon --token usdt --crypto-amount 50       # Sell 50 USDT 
 Uses MoonPay as the fiat provider. All three config values are required:
 
 ```bash
-wdk config set --key ramp.moonpay.apiKey --value <your-publishable-key>
-wdk config set --key ramp.moonpay.signUrl --value <your-sign-url>
-wdk config set --key ramp.moonpay.environment --value sandbox    # or production
+wdk config set --key providers.moonpay.config.apiKey --value <your-publishable-key>
+wdk config set --key providers.moonpay.config.signUrl --value <your-sign-url>
+wdk config set --key providers.moonpay.config.environment --value sandbox    # or production
 ```
 
 **Options:**
@@ -397,7 +397,14 @@ wdk config set --key ramp.moonpay.environment --value sandbox    # or production
 
 Supported tokens are derived from the registry — any token with `metadata.moonpaySlug` set in `wdk.tokens.json` (or a custom token added via `wdk token add`). Environment validation prevents using production MoonPay with testnet networks (and vice versa).
 
-Configure via `wdk config set --key ramp.moonpay.apiKey --value <key>`, `ramp.moonpay.signUrl`, and `ramp.moonpay.environment`.
+MoonPay is an entry of the `providers` registry with `kind: fiat` (see [Provider](#provider)), so it is configured like any other provider and `wdk provider disable --name moonpay` turns `buy` and `sell` off:
+
+```bash
+wdk config set --key providers.moonpay.config.apiKey --value <key>    # also signUrl, environment
+wdk provider info --name moonpay                                      # what the module receives
+```
+
+The pre-registry `ramp.moonpay.*` keys are still read when the new ones are unset, so existing setups keep working. They are deprecated; move them with the commands above.
 
 ### Provider
 
@@ -492,14 +499,14 @@ Config read commands (`get`, `path`) work without a wallet. Write operations (`s
 ```bash
 # Get
 wdk config get --all                                            # Show all config
-wdk config get --key ramp.moonpay.apiKey                        # Show a specific value
+wdk config get --key providers.moonpay.config.apiKey            # Show a specific value
 wdk config get --network ethereum                               # Show Ethereum config
 wdk config get --key provider --network ethereum                # Show a network-specific value
 
 # Set
-wdk config set --key ramp.moonpay.apiKey --value pk_test_...    # Set a value
+wdk config set --key providers.moonpay.config.apiKey --value pk_test_...   # Set a value
 wdk config set --key provider --value <rpc-url> --network ethereum              # Network-scoped value
-wdk config set --key ramp.moonpay --value '{"apiKey":"...","signUrl":"...","environment":"sandbox"}'  # JSON object
+wdk config set --key providers.moonpay.config --value '{"apiKey":"...","signUrl":"...","environment":"sandbox"}'  # JSON object
 wdk config set --value '{"provider":"https://...","transferMaxFee":5000}' --network optimism    # Full network config
 
 # Reset

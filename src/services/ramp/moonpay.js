@@ -17,6 +17,7 @@ import { WdkCliError, ErrorCode } from '../../errors/index.js'
 import { resolveAsset } from '../../config/ramp.js'
 import { isTestnet } from '../../config/networks.js'
 import { configService } from '../config-service.js'
+import { resolveProtocolConfig } from '../protocol-service.js'
 
 /** @typedef {import('./types.js').RampProvider} RampProvider */
 /** @typedef {import('./types.js').RampInput} RampInput */
@@ -24,6 +25,9 @@ import { configService } from '../config-service.js'
 /** @typedef {import('./types.js').QuoteResult} QuoteResult */
 /** @typedef {import('./types.js').UrlResult} UrlResult */
 /** @typedef {import('./types.js').Direction} Direction */
+
+/** The provider short name MoonPay is registered under. */
+const PROVIDER = 'moonpay'
 
 /**
  * @typedef {Object} MoonPayConfig
@@ -33,23 +37,30 @@ import { configService } from '../config-service.js'
  */
 
 /**
- * Loads and validates MoonPay config from the config service.
+ * Loads and validates MoonPay config from the providers registry, falling back
+ * to the pre-registry `ramp.moonpay.*` keys so existing setups keep working.
  *
  * @returns {MoonPayConfig} The validated MoonPay configuration.
+ * @throws {WdkCliError} MISSING_CONFIG when a required field is unset, INVALID_CONFIG
+ *   when the environment is not `production` or `sandbox`, and when the provider
+ *   or its module is disabled.
  */
 function loadConfig () {
-  const missing = []
-  const apiKey = /** @type {string | undefined} */ (configService.get('ramp.moonpay.apiKey')) ?? ''
-  if (!apiKey) missing.push('ramp.moonpay.apiKey')
-  const signUrl =
-    /** @type {string | undefined} */ (configService.get('ramp.moonpay.signUrl')) ?? ''
-  if (!signUrl) missing.push('ramp.moonpay.signUrl')
-  const env =
-    /** @type {string | undefined} */ (configService.get('ramp.moonpay.environment')) ?? ''
-  if (!env) missing.push('ramp.moonpay.environment')
+  const resolved = resolveProtocolConfig(PROVIDER)
+  // `ramp.moonpay.*` was where these lived before the providers registry.
+  const read = (field) => String(
+    resolved[field] || configService.get(`ramp.${PROVIDER}.${field}`) || ''
+  )
 
+  const apiKey = read('apiKey')
+  const signUrl = read('signUrl')
+  const env = read('environment')
+
+  const missing = ['apiKey', 'signUrl', 'environment'].filter((f) => !read(f))
   if (missing.length > 0) {
-    const commands = missing.map((k) => `  wdk config set --key ${k} --value <value>`).join('\n')
+    const commands = missing
+      .map((f) => `  wdk config set --key providers.${PROVIDER}.config.${f} --value <value>`)
+      .join('\n')
     throw new WdkCliError(
       `MoonPay not configured. Missing: ${missing.join(', ')}`,
       ErrorCode.MISSING_CONFIG,
@@ -58,7 +69,7 @@ function loadConfig () {
   }
   if (env !== 'production' && env !== 'sandbox') {
     throw new WdkCliError(
-      `Invalid ramp.moonpay.environment '${env}'. Must be 'production' or 'sandbox'.`,
+      `Invalid providers.${PROVIDER}.config.environment '${env}'. Must be 'production' or 'sandbox'.`,
       ErrorCode.INVALID_CONFIG
     )
   }

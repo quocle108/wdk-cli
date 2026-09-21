@@ -212,7 +212,7 @@ wdk sell --network ethereum --token eth --crypto-amount 0.5 --json
 wdk sell --network polygon --token usdt --crypto-amount 50 --json
 ```
 
-`--token` is required (registered ticker). Provide exactly one of `--fiat-amount` or `--crypto-amount` — both accept decimal values. Supported tokens per network are derived from the token registry's `metadata.moonpaySlug` field (see `wdk token list`). Requires `ramp.moonpay.apiKey` / `ramp.moonpay.signUrl` / `ramp.moonpay.environment` to be configured.
+`--token` is required (registered ticker). Provide exactly one of `--fiat-amount` or `--crypto-amount` — both accept decimal values. Supported tokens per network are derived from the token registry's `metadata.moonpaySlug` field (see `wdk token list`). Requires `providers.moonpay.config.apiKey` / `signUrl` / `environment` to be configured.
 
 ### Token Registry
 
@@ -256,8 +256,8 @@ Errors are returned as structured JSON: `{"error": "...", "code": "...", "sugges
 | `TOKEN_NOT_SUPPORTED` | Unregistered `--token` | Ask user to register: `wdk token add '{"network":"<n>","token":"<t>","symbol":"...","decimals":...,"isNative":...,...}'` |
 | `NETWORK_NOT_SUPPORTED` | Unknown network name, **or** the network exists but has no `indexerSlug` configured (so `get history` is unavailable) | If the message says "is disabled", the user disabled the network or its module — the error hint names the exact enable command to suggest (never run it yourself). On a disabled network `wdk token list`, `wdk token info` and `wdk method list` fail the same way; report that rather than retrying. If the network is unknown, ask the user to run `wdk network list`. If the message says "not supported by the indexer API", the network is missing its `indexerSlug` — ask the user to delete and recreate it with `--indexer-slug <chain>` (the chain slug the WDK indexer uses, usually the same as the network name). |
 | `NETWORK_ERROR` (403 from indexer) | Missing/invalid API key | Ask user: `wdk config set --key indexer.apiKey --value <key>` |
-| `MISSING_CONFIG` (moonpay) | Ramp not configured | Ask user: `wdk config set --key ramp.moonpay.apiKey --value <key>` (also `signUrl`, `environment`) |
-| `ENVIRONMENT_MISMATCH` | sandbox key on mainnet (or vice versa) | Ask user: `wdk config set --key ramp.moonpay.environment --value <sandbox\|production>` |
+| `MISSING_CONFIG` (moonpay) | Ramp not configured | Ask user: `wdk config set --key providers.moonpay.config.apiKey --value <key>` (also `signUrl`, `environment`) |
+| `ENVIRONMENT_MISMATCH` | sandbox key on mainnet (or vice versa) | Ask user: `wdk config set --key providers.moonpay.config.environment --value <sandbox\|production>` |
 
 ## Restricted Actions (NEVER do these)
 

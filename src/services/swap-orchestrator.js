@@ -25,6 +25,12 @@ import { pickBest, buildNoRouteError } from './routing.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
 /** @typedef {import('../config/wdk-config.js').ProtocolKind} ProtocolKind */
+/**
+ * The kinds `wdk swap` and `wdk bridge` route between. The registry also holds
+ * kinds this orchestrator never sees, such as `fiat`.
+ *
+ * @typedef {'swap' | 'bridge' | 'swidge'} RoutedKind
+ */
 /** @typedef {import('./routing.js').ProtocolQuote} ProtocolQuote */
 /** @typedef {import('./protocol-adapter.js').SwapRequest} SwapRequest */
 /** @typedef {import('@tetherto/wdk').WdkAccount} WalletAccount */
@@ -43,9 +49,9 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  */
 
 /**
- * The quote method exposed by each protocol kind.
+ * The quote method exposed by each kind this orchestrator routes.
  *
- * @type {Record<ProtocolKind, 'quoteSwap' | 'quoteBridge' | 'quoteSwidge'>}
+ * @type {Record<RoutedKind, 'quoteSwap' | 'quoteBridge' | 'quoteSwidge'>}
  */
 const QUOTE_METHOD = {
   swap: 'quoteSwap',
@@ -54,9 +60,9 @@ const QUOTE_METHOD = {
 }
 
 /**
- * The execute method exposed by each protocol kind.
+ * The execute method exposed by each kind this orchestrator routes.
  *
- * @type {Record<ProtocolKind, 'swap' | 'bridge' | 'swidge'>}
+ * @type {Record<RoutedKind, 'swap' | 'bridge' | 'swidge'>}
  */
 const EXECUTE_METHOD = {
   swap: 'swap',
@@ -83,7 +89,7 @@ const instancesByAccount = new WeakMap()
  * @typedef {Object} CapableProtocol
  * @property {string} name - The protocol short name.
  * @property {ProtocolConstructor} ProtocolClass - The protocol's class (default export).
- * @property {ProtocolKind} kind - The protocol's declared kind, from the registry.
+ * @property {RoutedKind} kind - The protocol's declared kind, from the registry.
  */
 
 /**
@@ -138,7 +144,7 @@ export async function resolveCandidates (requestKind, protocol) {
       )
     }
     const ProtocolClass = /** @type {ProtocolConstructor} */ (await loadProtocolClass(entry.module))
-    return [{ name: protocol, ProtocolClass, kind: entry.kind }]
+    return [{ name: protocol, ProtocolClass, kind: /** @type {RoutedKind} */ (entry.kind) }]
   }
 
   const resolved = await Promise.all(
@@ -218,7 +224,7 @@ function getProtocolInstance (account, capable, network) {
  * same-token so the received amount equals the input and providers differ only
  * on fees.
  *
- * @param {ProtocolKind} kind - The protocol's kind.
+ * @param {RoutedKind} kind - The protocol's kind.
  * @param {string} name - The protocol short name.
  * @param {Record<string, unknown>} raw - The provider's raw quote.
  * @param {SwapRequest} request - The request, for the bridge input amount.
