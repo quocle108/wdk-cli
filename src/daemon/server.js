@@ -480,38 +480,19 @@ export class WalletDaemon {
           const account = await wdk.getAccount(req.network, req.index ?? 0)
           const sendAmount = BigInt(req.amount)
 
-          let txHash
-          let from
-          let fee
-
-          if (req.token) {
-            const result = await account.transfer({
-              token: req.token,
-              recipient: req.to,
-              amount: sendAmount
-            })
-            txHash = result.hash
-            from = await account.getAddress()
-            fee = result.fee?.toString()
-          } else {
-            const result = await account.sendTransaction({
-              to: req.to,
-              value: sendAmount
-            })
-            txHash = result.hash
-            from = await account.getAddress()
-            fee = result.fee?.toString()
-          }
+          const result = req.token
+            ? await account.transfer({ token: req.token, recipient: req.to, amount: sendAmount })
+            : await account.sendTransaction({ to: req.to, value: sendAmount })
 
           return {
             ok: true,
             data: {
-              txHash,
+              txHash: result.hash,
               network: req.network,
-              from,
+              from: await account.getAddress(),
               to: req.to,
               amount: req.amount,
-              fee
+              fee: result.fee?.toString()
             }
           }
         } catch (e) {
