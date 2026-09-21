@@ -17,8 +17,7 @@ import { createRequire } from 'node:module'
 
 const loadProtocolClass = jest.fn()
 
-// Mocked before the service is imported: the real one reads the developer's own
-// config file, so an unmocked read would make these tests depend on it.
+// Mocked, not spied on: the real service reads the developer's own config file.
 jest.unstable_mockModule('../../../src/services/config-service.js', () => ({
   configService: { get: jest.fn(), set: jest.fn(), delete: jest.fn() }
 }))

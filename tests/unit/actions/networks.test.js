@@ -14,7 +14,7 @@
 
 import { jest } from '@jest/globals'
 
-import { listNetworks } from '../../../src/actions/networks.js'
+import { listNetworks, validateNetworkSpec } from '../../../src/actions/networks.js'
 import { NETWORK_NAMES } from '../../../src/config/networks.js'
 import { configService } from '../../../src/services/config-service.js'
 
@@ -78,5 +78,58 @@ describe('listNetworks', () => {
 
     expect(result.networks.map((n) => n.name)).toEqual(expected)
     expect(result.networks.filter((n) => !n.enabled)).toEqual([])
+  })
+})
+
+describe('validateNetworkSpec name collisions', () => {
+  const SPEC = { network: 'polygon', module: '@tetherto/wdk-wallet-evm' }
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
+  const withConfig = (values) => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      Object.hasOwn(values, key) ? values[key] : undefined
+    )
+  }
+
+  it('rejects the name of a built-in network', () => {
+    withConfig({})
+
+    expect(() => validateNetworkSpec(SPEC)).toThrow(
+      expect.objectContaining({ message: "Network 'polygon' already exists.", code: 'WALLET_EXISTS' })
+    )
+  })
+
+  it('rejects the name of a built-in the user disabled, which delete could never remove', () => {
+    withConfig({ overrides: { networks: { polygon: { enabled: false } } } })
+
+    expect(() => validateNetworkSpec(SPEC)).toThrow(
+      expect.objectContaining({ message: "Network 'polygon' already exists.", code: 'WALLET_EXISTS' })
+    )
+  })
+
+  it('rejects the name of a built-in hidden by its disabled module', () => {
+    withConfig({ overrides: { modules: { '@tetherto/wdk-wallet-evm': { enabled: false } } } })
+
+    expect(() => validateNetworkSpec(SPEC)).toThrow("Network 'polygon' already exists.")
+  })
+
+  it('rejects the name of an existing custom network', () => {
+    withConfig({ customNetworks: { mychain: { name: 'mychain', module: '@tetherto/wdk-wallet-evm' } } })
+
+    expect(() => validateNetworkSpec({ network: 'mychain', module: '@tetherto/wdk-wallet-evm' })).toThrow(
+      "Network 'mychain' already exists."
+    )
+  })
+
+  it('accepts a name no network uses', () => {
+    withConfig({})
+
+    expect(validateNetworkSpec({ network: 'mychain', module: '@tetherto/wdk-wallet-evm' })).toMatchObject({
+      network: 'mychain',
+      module: '@tetherto/wdk-wallet-evm'
+    })
   })
 })

@@ -178,8 +178,6 @@ describe('validateProviderSpec', () => {
   })
 
   it('treats a name matching an inherited object property as an ordinary name', () => {
-    // 'constructor' is a legal name: every registry lookup is an own-property
-    // check, so it resolves to nothing until it is actually registered.
     expect(validateProviderSpec({ name: 'constructor', kind: 'swap', module: CUSTOM_MODULE })).toEqual({
       name: 'constructor',
       kind: 'swap',

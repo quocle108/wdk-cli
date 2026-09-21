@@ -14,9 +14,7 @@
 
 import { jest } from '@jest/globals'
 
-// Mocked before the orchestrator is imported: resolving a protocol's config
-// reads the developer's own config file, so an unmocked read would make these
-// tests depend on it (a locally disabled protocol would fail them).
+// Mocked, not spied on: the real service reads the developer's own config file.
 jest.unstable_mockModule('../../../src/services/config-service.js', () => ({
   configService: { get: jest.fn(), set: jest.fn(), delete: jest.fn() }
 }))

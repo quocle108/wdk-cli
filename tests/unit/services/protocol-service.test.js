@@ -19,8 +19,7 @@ const getConfig = jest.fn()
 const setConfig = jest.fn()
 const deleteConfig = jest.fn()
 
-// Mocked wholesale rather than spied on: the real service reads the developer's
-// own config file, so an unmocked read would make these tests depend on it.
+// Mocked, not spied on: the real service reads the developer's own config file.
 jest.unstable_mockModule('../../../src/services/config-service.js', () => ({
   configService: { get: getConfig, set: setConfig, delete: deleteConfig }
 }))
