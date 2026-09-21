@@ -189,12 +189,20 @@ describe('validateProviderSpec', () => {
 })
 
 describe('verifyProviderKind', () => {
-  it('rejects a spec whose module is not installed', async () => {
+  it('rejects a spec whose module is not a registered package', async () => {
     withConfig({})
 
     await expect(
-      verifyProviderKind({ name: 'lifi', kind: 'swap', module: '@nope/not-installed' })
-    ).rejects.toThrow("Module '@nope/not-installed' is not installed.")
+      verifyProviderKind({ name: 'lifi', kind: 'swap', module: '@nope/unregistered' })
+    ).rejects.toThrow("Module '@nope/unregistered' is not registered.")
+  })
+
+  it('rejects a registered module whose files are missing', async () => {
+    withConfig({ customModules: { '@dummy/pruned': { version: '1.0.0' } } })
+
+    await expect(
+      verifyProviderKind({ name: 'lifi', kind: 'swap', module: '@dummy/pruned' })
+    ).rejects.toThrow("Module '@dummy/pruned' is not installed.")
   })
 
   it('accepts a spec whose installed module implements the declared kind', async () => {

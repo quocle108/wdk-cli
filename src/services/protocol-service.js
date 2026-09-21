@@ -14,7 +14,7 @@
 
 import { walletsFile } from '../config/wdk-config.js'
 import { configService } from './config-service.js'
-import { getCustomModules } from './module-service.js'
+import { isRegisteredModule } from './module-service.js'
 import { isDisabled, setEnabled, clearOverride, hasOwn, getOwn } from './override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
@@ -136,17 +136,6 @@ export function isBuiltinProtocol (name) {
  */
 export function isCustomProtocol (name) {
   return hasOwn(getCustomProviders(), name)
-}
-
-/**
- * Returns the module packages a provider may be backed by: every package in
- * the catalog plus any added with `wdk module add`. Computed per call so a
- * freshly added module counts without a restart.
- *
- * @returns {string[]} The valid module package names.
- */
-export function getValidProviderModules () {
-  return [...new Set([...Object.keys(walletsFile.modules || {}), ...Object.keys(getCustomModules())])]
 }
 
 /**
@@ -306,12 +295,20 @@ export function servesRequest (protocolKind, requestKind) {
 
 /**
  * Dynamically imports a protocol module and returns its default-exported class.
+ * The specifier is checked against {@link isRegisteredModule} first.
  *
  * @param {string} module - The protocol module package name.
  * @returns {Promise<Function>} The protocol class (default export).
- * @throws {WdkCliError} When the module is not installed.
+ * @throws {WdkCliError} When the module is not a registered package, or is registered but not installed.
  */
 export async function loadProtocolClass (module) {
+  if (!isRegisteredModule(module)) {
+    throw new WdkCliError(
+      `Module '${module}' is not registered.`,
+      ErrorCode.UNSUPPORTED_MODULE,
+      `Add it first with: wdk module add --name ${module}`
+    )
+  }
   try {
     const mod = await import(module)
     return mod.default || mod
@@ -410,7 +407,7 @@ export function setProviderEnabled (name, enabled) {
     new WdkCliError(
       `'${name}' is not a provider.`,
       ErrorCode.INVALID_ARGUMENT,
-      hasOwn(walletsFile.modules, name) || hasOwn(getCustomModules(), name)
+      isRegisteredModule(name)
         ? `'${name}' is a module. Use: wdk module ${verb} --name ${name}`
         : 'See provider names with: wdk provider list'
     )

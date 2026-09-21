@@ -15,7 +15,17 @@
 import { jest } from '@jest/globals'
 import { createRequire } from 'node:module'
 
-import {
+const getConfig = jest.fn()
+const setConfig = jest.fn()
+const deleteConfig = jest.fn()
+
+// Mocked wholesale rather than spied on: the real service reads the developer's
+// own config file, so an unmocked read would make these tests depend on it.
+jest.unstable_mockModule('../../../src/services/config-service.js', () => ({
+  configService: { get: getConfig, set: setConfig, delete: deleteConfig }
+}))
+
+const {
   getProtocols,
   getProtocolsByKind,
   getProtocol,
@@ -23,11 +33,11 @@ import {
   resolveProtocolConfig,
   getProviderNetworks,
   assertImplementsKind,
+  loadProtocolClass,
   isProviderDisabled,
   setProviderEnabled,
   servesRequest
-} from '../../../src/services/protocol-service.js'
-import { configService } from '../../../src/services/config-service.js'
+} = await import('../../../src/services/protocol-service.js')
 
 const require = createRequire(import.meta.url)
 const catalog = require('../../../wdk.config.json')
@@ -36,8 +46,11 @@ const PACKAGED_NAMES = Object.keys(catalog.providers)
 const CUSTOM_MODULE = '@tetherto/wdk-wallet-ton'
 const VELORA_MODULE = catalog.providers.velora.module
 
-afterEach(() => {
-  jest.restoreAllMocks()
+beforeEach(() => {
+  getConfig.mockReset()
+  setConfig.mockReset()
+  deleteConfig.mockReset()
+  getConfig.mockReturnValue(undefined)
 })
 
 /**
@@ -47,9 +60,7 @@ afterEach(() => {
  * @param {Record<string, unknown>} values
  */
 function withConfig (values) {
-  jest.spyOn(configService, 'get').mockImplementation((key) =>
-    Object.hasOwn(values, key) ? values[key] : undefined
-  )
+  getConfig.mockImplementation((key) => (Object.hasOwn(values, key) ? values[key] : undefined))
 }
 
 describe('getProtocols', () => {
@@ -238,6 +249,41 @@ describe('assertImplementsKind', () => {
   })
 })
 
+describe('loadProtocolClass', () => {
+  it.each([
+    ['an absolute path', '/tmp/evil.mjs'],
+    ['a relative path', './evil.mjs'],
+    ['a file URL', 'file:///tmp/evil.mjs'],
+    ['a data URL', 'data:text/javascript,globalThis.pwned=1'],
+    ['an unregistered package', '@nope/unregistered']
+  ])('refuses to import %s', async (_label, specifier) => {
+    withConfig({})
+
+    await expect(loadProtocolClass(specifier)).rejects.toThrow(
+      expect.objectContaining({
+        message: `Module '${specifier}' is not registered.`,
+        code: 'UNSUPPORTED_MODULE'
+      })
+    )
+  })
+
+  it('imports a packaged module', async () => {
+    withConfig({})
+
+    const ProtocolClass = await loadProtocolClass(VELORA_MODULE)
+
+    expect(typeof ProtocolClass.prototype.quoteSwap).toBe('function')
+  })
+
+  it('reports a registered module whose files are missing as not installed', async () => {
+    withConfig({ customModules: { '@dummy/pruned': { version: '1.0.0' } } })
+
+    await expect(loadProtocolClass('@dummy/pruned')).rejects.toThrow(
+      "Module '@dummy/pruned' is not installed."
+    )
+  })
+})
+
 describe('servesRequest', () => {
   it('lets a swidge protocol serve both swap and bridge requests', () => {
     expect(servesRequest('swidge', 'swap')).toBe(true)
@@ -273,11 +319,9 @@ describe('provider enable and disable', () => {
 
   beforeEach(() => {
     store = {}
-    jest.spyOn(configService, 'get').mockImplementation((key) =>
-      Object.hasOwn(store, key) ? store[key] : undefined
-    )
-    jest.spyOn(configService, 'set').mockImplementation((key, value) => { store[key] = value })
-    jest.spyOn(configService, 'delete').mockImplementation((key) => { delete store[key] })
+    getConfig.mockImplementation((key) => (Object.hasOwn(store, key) ? store[key] : undefined))
+    setConfig.mockImplementation((key, value) => { store[key] = value })
+    deleteConfig.mockImplementation((key) => { delete store[key] })
   })
 
   it('writes a disabled delta and drops the provider from routing', () => {

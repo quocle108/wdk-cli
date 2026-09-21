@@ -65,7 +65,7 @@ function printConfig (config, indent) {
 export function registerProviderCommand (program) {
   const provider = program
     .command('provider')
-    .description('Manage swap and bridge protocol providers')
+    .description('Manage service providers')
 
   configureHelp(provider, {})
 

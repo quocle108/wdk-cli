@@ -30,9 +30,11 @@ jest.unstable_mockModule('@tetherto/wdk', () => ({
 }))
 
 const { WdkService } = await import('../../../src/services/wdk-service.js')
+const { configService } = await import('../../../src/services/config-service.js')
 
 const MNEMONIC =
   'cook voyage document eight skate token alien guide drink uncle term abuse'
+const EVIL_NETWORK = 'evilnet'
 
 describe('WdkService seed memory', () => {
   beforeEach(() => {
@@ -70,5 +72,35 @@ describe('WdkService seed memory', () => {
     const svc = new WdkService()
     expect(() => svc.dispose()).not.toThrow()
     expect(disposed.count).toBe(0)
+  })
+})
+
+describe('WdkService wallet module loading', () => {
+  it.each([
+    ['an absolute path', '/tmp/evil.mjs'],
+    ['a file URL', 'file:///tmp/evil.mjs'],
+    ['a data URL', 'data:text/javascript,globalThis.pwned=1'],
+    ['an unregistered package', '@nope/unregistered']
+  ])('refuses to load %s as a wallet module', async (_label, specifier) => {
+    const svc = new WdkService()
+    svc.createInstance(MNEMONIC)
+    svc.registeredNetworks.add('safe')
+    configService.set(`customNetworks.${EVIL_NETWORK}`, {
+      name: EVIL_NETWORK,
+      displayName: 'Evil',
+      type: specifier,
+      module: specifier,
+      custom: true,
+      testnet: false
+    })
+
+    await expect(svc.getAccount(EVIL_NETWORK, 0)).rejects.toThrow(
+      expect.objectContaining({
+        message: `Wallet module '${specifier}' is not registered.`,
+        code: 'UNSUPPORTED_MODULE'
+      })
+    )
+
+    configService.delete(`customNetworks.${EVIL_NETWORK}`)
   })
 })

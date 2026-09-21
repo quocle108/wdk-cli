@@ -20,7 +20,6 @@ import {
   findProtocol,
   isBuiltinProtocol,
   isCustomProtocol,
-  getValidProviderModules,
   getProviderNetworks,
   resolveProtocolConfig,
   loadProtocolClass,
@@ -28,6 +27,7 @@ import {
   saveCustomProvider,
   removeCustomProvider
 } from '../services/protocol-service.js'
+import { isRegisteredModule } from '../services/module-service.js'
 import { hasOwn } from '../services/override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
@@ -151,7 +151,7 @@ export function validateProviderSpec (data) {
       ErrorCode.INVALID_ARGUMENT
     )
   }
-  if (!getValidProviderModules().includes(module)) {
+  if (!isRegisteredModule(module)) {
     throw new WdkCliError(
       `Module '${module}' is not registered.`,
       ErrorCode.UNSUPPORTED_MODULE,
