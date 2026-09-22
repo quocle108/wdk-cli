@@ -270,6 +270,25 @@ wdk token enable --network <n> --token <t>                     # Bring it back
 
 Every entry under `metadata.slugs` is optional. Omit a system when the integration doesn't apply — the rest of the CLI keeps working; only that feature is disabled for the token. The block grows by key, so a newly registered provider needs no schema change: `{"slugs":{"transak":{"slug":"USDT","network":"tron"}}}`. Unknown fields *beside* `slugs` are rejected, so a mistyped mapping fails loudly instead of being dropped. Unknown top-level fields (outside `metadata`) still pass through silently so you can annotate entries with comments, tags, owner, etc.
 
+**What a slug becomes.** The key always means the same thing — *what that system calls this token* — but each consumer uses it in its own idiom, and the CLI never interprets the value:
+
+| system | the slug becomes |
+| --- | --- |
+| `indexer` | the token segment of the indexer URL |
+| `bitfinex` | the trading-pair symbol queried for the USD price |
+| a fiat provider | `cryptoAsset` in the SDK's `quoteBuy` / `buy` / `quoteSell` / `sell` calls |
+
+That is why `usdt`, `tUSTUSD` and `usdt_trx` can all be correct for the same token: three systems, three names.
+
+For a fiat provider the object form splits in two — `slug` fills the contract's required `cryptoAsset`, and **every other key is forwarded verbatim** as the call's `config` bag, which the CLI neither validates nor understands:
+
+```jsonc
+"transak": { "slug": "USDT", "network": "tron" }
+// → quoteBuy({ cryptoAsset: "USDT", fiatCurrency: "usd", config: { network: "tron" } })
+```
+
+This is what lets a new fiat provider be added as data: whatever extra fields it takes, write them beside `slug` and they reach it untouched. There is deliberately **no fallback** — the CLI never guesses a slug from the token symbol, because a plausible guess can name a real asset on the wrong chain.
+
 Example full entry (file or inline):
 
 ```json

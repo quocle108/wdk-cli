@@ -14,7 +14,7 @@
 
 import { jest } from '@jest/globals'
 
-import { listTokens } from '../../../src/actions/token.js'
+import { listTokens, validateTokenEntry } from '../../../src/actions/token.js'
 import { configService } from '../../../src/services/config-service.js'
 
 const ETH_ENTRY = {
@@ -86,5 +86,67 @@ describe('listTokens', () => {
     expect(result.tokens['tron-testnet'].trx.symbol).toBe('TRX')
     expect(result.tokens.ethereum.usdt).toEqual(USDT_ENTRY)
     expect(result.disabled).toEqual(['ethereum/usdt'])
+  })
+})
+
+describe('validateTokenEntry metadata', () => {
+  const BASE = { symbol: 'TX', decimals: 6, isNative: false, address: '0x9' }
+
+  const withMetadata = (metadata) => validateTokenEntry({ ...BASE, metadata })
+
+  it('keeps a slug string as written', () => {
+    expect(withMetadata({ slugs: { moonpay: 'usdt_trx' } }).metadata).toEqual({
+      slugs: { moonpay: 'usdt_trx' }
+    })
+  })
+
+  it('keeps the object form whole, so a system\'s extra fields survive', () => {
+    expect(withMetadata({ slugs: { transak: { slug: 'USDT', network: 'tron' } } }).metadata).toEqual({
+      slugs: { transak: { slug: 'USDT', network: 'tron' } } }
+    )
+  })
+
+  it('omits metadata entirely when the block is empty', () => {
+    expect(withMetadata({ slugs: {} }).metadata).toBeUndefined()
+  })
+
+  it('rejects a pre-slugs field instead of dropping it silently', () => {
+    expect(() => withMetadata({ moonpaySlug: 'usdt' })).toThrow(
+      expect.objectContaining({
+        message: 'Token "metadata" has unknown field(s): moonpaySlug.',
+        code: 'INVALID_ARGUMENT'
+      })
+    )
+  })
+
+  it('rejects an unregistered field beside slugs', () => {
+    expect(() => withMetadata({ slugs: { moonpay: 'usdt' }, note: 'hi' })).toThrow(
+      'Token "metadata" has unknown field(s): note.'
+    )
+  })
+
+  it('rejects __proto__ as a system name, which assignment would otherwise swallow', () => {
+    const metadata = JSON.parse('{"slugs":{"__proto__":{"slug":"pwned"}}}')
+
+    expect(() => withMetadata(metadata)).toThrow(
+      'Token "metadata.slugs" cannot use "__proto__" as a system name.'
+    )
+    expect({}.slug).toBeUndefined()
+  })
+
+  it.each([
+    ['an empty string', { transak: '' }, 'Token "metadata.slugs.transak" must be a non-empty string.'],
+    ['a number', { transak: 42 }, 'Token "metadata.slugs.transak" must be a string or an object.'],
+    ['an array', { transak: [] }, 'Token "metadata.slugs.transak" must be a string or an object.'],
+    ['an object with no slug', { transak: { network: 'tron' } }, 'Token "metadata.slugs.transak" is missing "slug".'],
+    ['an object with an empty slug', { transak: { slug: '' } }, 'Token "metadata.slugs.transak.slug" must be a non-empty string.']
+  ])('rejects %s', (_label, slugs, message) => {
+    expect(() => withMetadata({ slugs })).toThrow(message)
+  })
+
+  it('rejects a slugs block that is not an object', () => {
+    expect(() => withMetadata({ slugs: 'moonpay' })).toThrow(
+      'Token "metadata.slugs" must be an object when provided.'
+    )
   })
 })

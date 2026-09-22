@@ -111,7 +111,10 @@ export function validateTokenName (value) {
  * @param {unknown} value - The raw `slugs` value (parsed JSON, untrusted input).
  * @returns {Record<string, TokenSlug>} The validated block.
  * @throws {WdkCliError} INVALID_ARGUMENT when the block is not an object.
- * @throws {WdkCliError} INVALID_ARGUMENT when an entry is neither a non-empty string nor an object with a non-empty `slug`.
+ * @throws {WdkCliError} INVALID_ARGUMENT when a system name is `__proto__`.
+ * @throws {WdkCliError} INVALID_ARGUMENT when an entry is neither a string nor an object.
+ * @throws {WdkCliError} INVALID_ARGUMENT when a string entry is empty.
+ * @throws {WdkCliError} INVALID_ARGUMENT when an object entry has no `slug`, or its `slug` is not a non-empty string.
  */
 function validateSlugs (value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -122,8 +125,14 @@ function validateSlugs (value) {
   }
   const raw = /** @type {Record<string, unknown>} */ (value)
   /** @type {Record<string, TokenSlug>} */
-  const clean = {}
+  const clean = Object.create(null)
   for (const [system, entry] of Object.entries(raw)) {
+    if (system === '__proto__') {
+      throw new WdkCliError(
+        'Token "metadata.slugs" cannot use "__proto__" as a system name.',
+        ErrorCode.INVALID_ARGUMENT
+      )
+    }
     if (typeof entry === 'string') {
       if (!entry) {
         throw new WdkCliError(
@@ -141,6 +150,13 @@ function validateSlugs (value) {
       )
     }
     const obj = /** @type {Record<string, unknown>} */ (entry)
+    if (obj.slug === undefined) {
+      throw new WdkCliError(
+        `Token "metadata.slugs.${system}" is missing "slug".`,
+        ErrorCode.INVALID_ARGUMENT,
+        `Use a plain string, or {"slug":"<the ${system} identifier>"} plus any extra fields ${system} needs.`
+      )
+    }
     if (typeof obj.slug !== 'string' || !obj.slug) {
       throw new WdkCliError(
         `Token "metadata.slugs.${system}.slug" must be a non-empty string.`,

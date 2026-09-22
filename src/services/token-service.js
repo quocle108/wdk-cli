@@ -126,12 +126,14 @@ function normalizeMetadata (metadata) {
   const legacy = Object.entries(LEGACY_SLUG_FIELDS)
     .filter(([field]) => typeof metadata[field] === 'string')
   if (legacy.length === 0) return metadata
-  const { slugs, ...rest } = metadata
+  const rest = Object.fromEntries(
+    Object.entries(metadata).filter(([key]) => key !== 'slugs' && !(key in LEGACY_SLUG_FIELDS))
+  )
   return {
     ...rest,
     slugs: {
       ...Object.fromEntries(legacy.map(([field, system]) => [system, metadata[field]])),
-      ...slugs
+      ...metadata.slugs
     }
   }
 }
