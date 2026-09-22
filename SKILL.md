@@ -212,7 +212,7 @@ wdk sell --network ethereum --token eth --crypto-amount 0.5 --json
 wdk sell --network polygon --token usdt --crypto-amount 50 --json
 ```
 
-`--token` is required (registered ticker). Provide exactly one of `--fiat-amount` or `--crypto-amount` — both accept decimal values. Supported tokens per network are derived from the token registry's `metadata.moonpaySlug` field (see `wdk token list`). Requires `providers.moonpay.config.apiKey` / `signUrl` / `environment` to be configured.
+`--token` is required (registered ticker). Provide exactly one of `--fiat-amount` or `--crypto-amount` — both accept decimal values. Supported tokens per network are derived from the token registry's `metadata.slugs.moonpay` entry (see `wdk token list`). Requires `providers.moonpay.config.apiKey` / `signUrl` / `environment` to be configured.
 
 ### Token Registry
 

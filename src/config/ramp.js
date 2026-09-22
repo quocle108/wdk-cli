@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { getMoonpayCode, getTokensSupportedBy } from '../services/token-service.js'
+import { getTokenByName, tokenSlugValue, getTokensSupportedBy } from '../services/token-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
+
+/** The external system key MoonPay's token slugs are registered under. */
+const MOONPAY = 'moonpay'
 
 const SUPPORTED_MODULES = ['moonpay']
 
@@ -52,10 +55,10 @@ export function validateModule (module) {
 export function resolveAsset (network, token, module) {
   const lower = token.toLowerCase()
   if (module === 'moonpay') {
-    const code = getMoonpayCode(network, lower)
+    const code = tokenSlugValue(getTokenByName(network, lower), MOONPAY)
     if (code) return { code, token: lower }
 
-    const supported = getTokensSupportedBy(network, 'moonpaySlug')
+    const supported = getTokensSupportedBy(network, MOONPAY)
     if (supported.length === 0) {
       throw new WdkCliError(
         `Network '${network}' does not support moonpay.`,

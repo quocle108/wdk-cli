@@ -22,7 +22,7 @@ const ETH_ENTRY = {
   decimals: 18,
   isNative: true,
   nativeId: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
-  metadata: { moonpaySlug: 'eth', bitfinexSlug: 'tETHUSD' }
+  metadata: { slugs: { moonpay: 'eth', bitfinex: 'tETHUSD' } }
 }
 
 const USDT_ENTRY = {
@@ -30,7 +30,7 @@ const USDT_ENTRY = {
   decimals: 6,
   isNative: false,
   address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-  metadata: { indexerSlug: 'usdt', moonpaySlug: 'usdt', bitfinexSlug: 'tUSTUSD' }
+  metadata: { slugs: { indexer: 'usdt', moonpay: 'usdt', bitfinex: 'tUSTUSD' } }
 }
 
 describe('listTokens', () => {

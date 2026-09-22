@@ -203,7 +203,7 @@ Example spec file:
       "symbol": "ETH",
       "decimals": 18,
       "isNative": true,
-      "metadata": { "moonpaySlug": "eth", "bitfinexSlug": "tETHUSD" }
+      "metadata": { "slugs": { "moonpay": "eth", "bitfinex": "tETHUSD" } }
     },
     {
       "token": "usdt",
@@ -211,7 +211,7 @@ Example spec file:
       "decimals": 6,
       "isNative": false,
       "address": "0x...",
-      "metadata": { "indexerSlug": "usdt", "moonpaySlug": "usdt", "bitfinexSlug": "tUSTUSD" }
+      "metadata": { "slugs": { "indexer": "usdt", "moonpay": "usdt", "bitfinex": "tUSTUSD" } }
     }
   ]
 }
@@ -263,11 +263,12 @@ wdk token enable --network <n> --token <t>                     # Bring it back
 | `decimals` | Yes | Used to convert between the CLI's decimal `--amount` (e.g. `1.5`) and the SDK's base units (wei / satoshi / lamport). Integer 0–24. |
 | `isNative` | Yes | Routes transfers through the native-coin path (no contract call) vs the token-contract path. Each network can have **at most one** native entry. |
 | `address` | If `!isNative` | Contract / mint address used by the SDK to call `transfer` / `getBalance` on the right token. Required for ERC-20 / SPL / TRC-20; omit for native. |
-| `metadata.indexerSlug` | No | Asset slug sent to the WDK indexer (`/api/v1/{chain}/{indexerSlug}/{addr}/token-transfers`). Without it, this token is skipped by `wdk get history`. **Requires the network to also have `indexerSlug` set** — a token slug alone doesn't enable the indexer; the network's `indexerSlug` is what tells the CLI the indexer is available for that chain. |
-| `metadata.moonpaySlug` | No | MoonPay asset code used in the buy/sell URL. Without it, `wdk buy`/`wdk sell` rejects the token. |
-| `metadata.bitfinexSlug` | No | Bitfinex pair symbol used to fetch a USD price. Without it, `wdk get balance` shows the balance but no USD column for that token. |
+| `metadata.slugs` | No | How external systems name this token, keyed by system. Each value is a slug string, or an object carrying `slug` plus the extra fields that system's API takes with it. |
+| `metadata.slugs.indexer` | No | Token slug sent to the WDK indexer (`/api/v1/{chain}/{indexerSlug}/{slug}/{addr}/token-transfers`). Without it, this token is skipped by `wdk get history`. **Requires the network to also have `indexerSlug` set** — a token slug alone doesn't enable the indexer; the network's `indexerSlug` is what tells the CLI the indexer is available for that chain. |
+| `metadata.slugs.moonpay` | No | MoonPay asset code used in the buy/sell URL. Without it, `wdk buy`/`wdk sell` rejects the token. |
+| `metadata.slugs.bitfinex` | No | Bitfinex pair symbol used to fetch a USD price. Without it, `wdk get balance` shows the balance but no USD column for that token. |
 
-Provider mappings (`metadata.*Slug`) are all optional. Omit them when the integration doesn't apply — the rest of the CLI keeps working; only the specific feature is disabled for that token. Unknown top-level fields pass through silently so you can annotate entries with comments, tags, owner, etc.
+Every entry under `metadata.slugs` is optional. Omit a system when the integration doesn't apply — the rest of the CLI keeps working; only that feature is disabled for the token. The block grows by key, so a newly registered provider needs no schema change: `{"slugs":{"transak":{"slug":"USDT","network":"tron"}}}`. Unknown fields *beside* `slugs` are rejected, so a mistyped mapping fails loudly instead of being dropped. Unknown top-level fields (outside `metadata`) still pass through silently so you can annotate entries with comments, tags, owner, etc.
 
 Example full entry (file or inline):
 
@@ -280,9 +281,11 @@ Example full entry (file or inline):
   "isNative": false,
   "address": "0x...",
   "metadata": {
-    "indexerSlug": "usdt",
-    "moonpaySlug": "usdt",
-    "bitfinexSlug": "tUSTUSD"
+    "slugs": {
+      "indexer": "usdt",
+      "moonpay": "usdt",
+      "bitfinex": "tUSTUSD"
+    }
   }
 }
 ```
@@ -395,7 +398,7 @@ wdk config set --key providers.moonpay.config.environment --value sandbox    # o
 | `--fiat-amount <value>` | Fiat amount (mutually exclusive with `--crypto-amount`) |
 | `--crypto-amount <value>` | Crypto amount (mutually exclusive with `--fiat-amount`) |
 
-Supported tokens are derived from the registry — any token with `metadata.moonpaySlug` set in `wdk.tokens.json` (or a custom token added via `wdk token add`). Environment validation prevents using production MoonPay with testnet networks (and vice versa).
+Supported tokens are derived from the registry — any token with `metadata.slugs.moonpay` set in `wdk.tokens.json` (or a custom token added via `wdk token add`). Environment validation prevents using production MoonPay with testnet networks (and vice versa).
 
 MoonPay is an entry of the `providers` registry with `kind: fiat` (see [Provider](#provider)), so it is configured like any other provider and `wdk provider disable --name moonpay` turns `buy` and `sell` off:
 

@@ -62,9 +62,8 @@ const {
   saveCustomToken,
   deleteCustomToken,
   toBaseUnits,
-  getIndexerCode,
-  getMoonpayCode,
-  getBitfinexCode,
+  getTokenSlug,
+  tokenSlugValue,
   getTokensSupportedBy,
   getAllTokens,
   setTokenEnabled,
@@ -80,9 +79,7 @@ const USDT_ETH_ENTRY = {
   isNative: false,
   address: USDT_ETH,
   metadata: {
-    indexerSlug: 'usdt',
-    moonpaySlug: 'usdt',
-    bitfinexSlug: 'tUSTUSD'
+    slugs: { indexer: 'usdt', moonpay: 'usdt', bitfinex: 'tUSTUSD' }
   }
 }
 
@@ -125,8 +122,7 @@ describe('token-service', () => {
       isNative: true,
       nativeId: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
       metadata: {
-        moonpaySlug: 'eth',
-        bitfinexSlug: 'tETHUSD'
+        slugs: { moonpay: 'eth', bitfinex: 'tETHUSD' }
       }
     })
   })
@@ -137,9 +133,7 @@ describe('token-service', () => {
       decimals: 8,
       isNative: true,
       metadata: {
-        indexerSlug: 'btc',
-        moonpaySlug: 'btc',
-        bitfinexSlug: 'tBTCUSD'
+        slugs: { indexer: 'btc', moonpay: 'btc', bitfinex: 'tBTCUSD' }
       }
     })
   })
@@ -155,8 +149,7 @@ describe('token-service', () => {
       isNative: false,
       address: USDT_SOL,
       metadata: {
-        moonpaySlug: 'usdt_sol',
-        bitfinexSlug: 'tUSTUSD'
+        slugs: { moonpay: 'usdt_sol', bitfinex: 'tUSTUSD' }
       }
     })
     expect(getTokenByAddress('solana', USDT_SOL.toLowerCase())).toBeUndefined()
@@ -237,24 +230,44 @@ describe('token-service', () => {
     expect(deleteCustomToken('ethereum', 'mytok')).toBe(false)
   })
 
-  it('returns the indexer slug', () => {
-    expect(getIndexerCode('ethereum', 'usdt')).toBe('usdt')
-    expect(getIndexerCode('ethereum', 'eth')).toBeUndefined()
+  it.each([
+    ['indexer', 'usdt', 'usdt'],
+    ['moonpay', 'eth', 'eth'],
+    ['bitfinex', 'xaut', 'tXAUT:USD']
+  ])('returns the %s slug for a token that has one', (system, token, expected) => {
+    expect(getTokenSlug('ethereum', token, system)).toBe(expected)
   })
 
-  it('returns the MoonPay slug', () => {
-    expect(getMoonpayCode('ethereum', 'eth')).toBe('eth')
-    expect(getMoonpayCode('ethereum', 'nope')).toBeUndefined()
+  it('returns undefined when the system does not carry the token', () => {
+    expect(getTokenSlug('ethereum', 'eth', 'indexer')).toBeUndefined()
   })
 
-  it('returns the Bitfinex slug', () => {
-    expect(getBitfinexCode('ethereum', 'xaut')).toBe('tXAUT:USD')
-    expect(getBitfinexCode('ethereum', 'nope')).toBeUndefined()
+  it('returns undefined when the token is not registered', () => {
+    expect(getTokenSlug('ethereum', 'nope', 'moonpay')).toBeUndefined()
   })
 
-  it('lists tokens supported by a provider', () => {
-    expect(getTokensSupportedBy('ethereum', 'indexerSlug')).toEqual(['usdt', 'xaut'])
-    expect(getTokensSupportedBy('ethereum', 'moonpaySlug')).toEqual(['eth', 'usdt', 'xaut'])
+  it('returns the object form whole, so extra fields reach the caller', () => {
+    store.customTokens = {
+      ethereum: {
+        mytok: { ...CUSTOM_ENTRY, metadata: { slugs: { transak: { slug: 'MYTOK', network: 'ethereum' } } } }
+      }
+    }
+
+    expect(getTokenSlug('ethereum', 'mytok', 'transak')).toEqual({ slug: 'MYTOK', network: 'ethereum' })
+    expect(tokenSlugValue(getTokenByName('ethereum', 'mytok'), 'transak')).toBe('MYTOK')
+  })
+
+  it('folds a pre-slugs custom token into the block on read', () => {
+    store.customTokens = {
+      ethereum: { mytok: { ...CUSTOM_ENTRY, metadata: { moonpaySlug: 'mytok_eth' } } }
+    }
+
+    expect(getTokenSlug('ethereum', 'mytok', 'moonpay')).toBe('mytok_eth')
+  })
+
+  it('lists tokens an external system carries', () => {
+    expect(getTokensSupportedBy('ethereum', 'indexer')).toEqual(['usdt', 'xaut'])
+    expect(getTokensSupportedBy('ethereum', 'moonpay')).toEqual(['eth', 'usdt', 'xaut'])
   })
 
   it('returns all tokens grouped by network', () => {
@@ -287,7 +300,7 @@ describe('token overrides', () => {
     decimals: 18,
     isNative: true,
     nativeId: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
-    metadata: { moonpaySlug: 'eth', bitfinexSlug: 'tETHUSD' }
+    metadata: { slugs: { moonpay: 'eth', bitfinex: 'tETHUSD' } }
   }
 
   it('hides a disabled built-in token from every lookup', () => {

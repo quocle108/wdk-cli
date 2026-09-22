@@ -23,7 +23,7 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
  * @property {boolean} [testnet] - True when the network is a testnet.
  * @property {string} [indexerSlug] - Optional override for the indexer chain slug.
  *   Defaults to the network name. Set only when they differ (e.g. `smart-account-ethereum` → `ethereum`).
- *   Per-token indexer slugs live in `wdk.tokens.json` under `metadata.indexerSlug`.
+ *   Per-token indexer slugs live in `wdk.tokens.json` under `metadata.slugs.indexer`.
  * @property {string} [chainId] - The CAIP-2 chain id (e.g. "eip155:1", "tron:mainnet").
  * @property {Record<string, unknown>} [config] - The per-network module configuration (RPC URL, chainId, etc.).
  * @property {Record<string, Record<string, unknown>>} [providers] - Per-network provider config overrides,
