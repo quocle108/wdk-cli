@@ -16,6 +16,7 @@ import { jest } from '@jest/globals'
 import { mnemonicToSeedSync } from 'bip39'
 
 const disposed = { count: 0 }
+const getConfig = jest.fn()
 
 jest.unstable_mockModule('@tetherto/wdk', () => ({
   default: class WDK {
@@ -29,8 +30,12 @@ jest.unstable_mockModule('@tetherto/wdk', () => ({
   }
 }))
 
+// Mocked, not spied on: the real service reads the developer's own config file.
+jest.unstable_mockModule('../../../src/services/config-service.js', () => ({
+  configService: { get: getConfig, set: jest.fn(), delete: jest.fn() }
+}))
+
 const { WdkService } = await import('../../../src/services/wdk-service.js')
-const { configService } = await import('../../../src/services/config-service.js')
 
 const MNEMONIC =
   'cook voyage document eight skate token alien guide drink uncle term abuse'
@@ -39,6 +44,7 @@ const EVIL_NETWORK = 'evilnet'
 describe('WdkService seed memory', () => {
   beforeEach(() => {
     disposed.count = 0
+    getConfig.mockReset()
   })
 
   it('retains the seed Buffer by reference (no copy)', () => {
@@ -76,23 +82,32 @@ describe('WdkService seed memory', () => {
 })
 
 describe('WdkService wallet module loading', () => {
+  beforeEach(() => {
+    getConfig.mockReset()
+  })
+
   it.each([
     ['an absolute path', '/tmp/evil.mjs'],
     ['a file URL', 'file:///tmp/evil.mjs'],
     ['a data URL', 'data:text/javascript,globalThis.pwned=1'],
     ['an unregistered package', '@nope/unregistered']
   ])('refuses to load %s as a wallet module', async (_label, specifier) => {
+    getConfig.mockImplementation((key) =>
+      key === 'customNetworks'
+        ? {
+            [EVIL_NETWORK]: {
+              name: EVIL_NETWORK,
+              displayName: 'Evil',
+              type: specifier,
+              module: specifier,
+              custom: true,
+              testnet: false
+            }
+          }
+        : undefined
+    )
     const svc = new WdkService()
     svc.createInstance(MNEMONIC)
-    svc.registeredNetworks.add('safe')
-    configService.set(`customNetworks.${EVIL_NETWORK}`, {
-      name: EVIL_NETWORK,
-      displayName: 'Evil',
-      type: specifier,
-      module: specifier,
-      custom: true,
-      testnet: false
-    })
 
     await expect(svc.getAccount(EVIL_NETWORK, 0)).rejects.toThrow(
       expect.objectContaining({
@@ -101,6 +116,6 @@ describe('WdkService wallet module loading', () => {
       })
     )
 
-    configService.delete(`customNetworks.${EVIL_NETWORK}`)
+    expect(getConfig).toHaveBeenCalledWith('customNetworks')
   })
 })

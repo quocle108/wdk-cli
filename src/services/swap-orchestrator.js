@@ -24,7 +24,7 @@ import { resolveRequestIdentifiers } from './protocol-identifier-resolver.js'
 import { pickBest, buildNoRouteError } from './routing.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
-/** @typedef {import('./protocol-service.js').ProtocolKind} ProtocolKind */
+/** @typedef {import('../config/wdk-config.js').ProtocolKind} ProtocolKind */
 /** @typedef {import('./routing.js').ProtocolQuote} ProtocolQuote */
 /** @typedef {import('./protocol-adapter.js').SwapRequest} SwapRequest */
 /** @typedef {import('@tetherto/wdk').WdkAccount} WalletAccount */

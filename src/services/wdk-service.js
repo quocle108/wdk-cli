@@ -32,6 +32,8 @@ const walletManagerCache = new Map()
  *
  * @param {string} moduleSpec - The npm module specifier, e.g. `@tetherto/wdk-wallet` or `@scope/pkg@1.2.3`.
  * @returns {Promise<WalletManagerCtor>} The default export of the wallet manager module.
+ * @throws {WdkCliError} UNSUPPORTED_MODULE when the package is not registered.
+ * @throws {WdkCliError} UNSUPPORTED_MODULE when the package is registered but not installed.
  */
 async function loadWalletManager (moduleSpec) {
   const cached = walletManagerCache.get(moduleSpec)

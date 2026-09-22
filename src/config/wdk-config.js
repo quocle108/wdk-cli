@@ -53,16 +53,15 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
  */
 
 /**
- * @typedef {'swap' | 'bridge' | 'swidge'} ProtocolKind
  * What a protocol provider does: `swap` serves same-network swaps, `bridge`
- * moves one token across networks, `swidge` serves both. Declared in the
- * registry, never read from the module.
+ * moves one token across networks, `swidge` serves both.
+ *
+ * @typedef {'swap' | 'bridge' | 'swidge'} ProtocolKind
  */
 
 /**
  * @typedef {Object} WdkProtocolEntry
- * @property {ProtocolKind} kind - The declared kind; decides which requests the protocol is quoted for
- *   and which quote/execute methods are called on it.
+ * @property {ProtocolKind} kind - What the provider does: same-network swaps, cross-network bridging, or both.
  * @property {string} module - The protocol module package name; its version is pinned in `modules`.
  * @property {Record<string, unknown>} [config] - General protocol config applied on every network
  *   (e.g. API keys); shallow-merged under any per-network override in `networks.<n>.providers.<name>`.

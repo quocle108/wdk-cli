@@ -33,9 +33,7 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
 export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge'])
 
 /**
- * The methods a protocol class must expose to serve each kind. Checked when a
- * provider is registered, so a mistyped `kind` fails then rather than at quote
- * time; routing itself always trusts the declared kind.
+ * The methods a protocol class must expose to serve each kind.
  *
  * @type {Record<ProtocolKind, readonly string[]>}
  */
@@ -143,7 +141,7 @@ export function isCustomProtocol (name) {
  * kind: swap and swidge protocols for a swap, bridge and swidge for a bridge.
  * Decided from the registry alone, so no module is imported.
  *
- * @param {'swap' | 'bridge'} requestKind - The request kind.
+ * @param {'swap' | 'bridge'} requestKind - Whether the caller needs a same-network swap or a cross-network bridge.
  * @returns {Record<string, WdkProtocolEntry>} Protocol entries keyed by short name.
  */
 export function getProtocolsByKind (requestKind) {
@@ -157,8 +155,9 @@ export function getProtocolsByKind (requestKind) {
  *
  * @param {string} name - The protocol short name (e.g. "velora").
  * @returns {WdkProtocolEntry} The protocol entry.
- * @throws {WdkCliError} When no protocol is registered under that name, or the user
- *   disabled it, or its module is disabled.
+ * @throws {WdkCliError} INVALID_ARGUMENT when no protocol is registered under that name.
+ * @throws {WdkCliError} INVALID_ARGUMENT when the user disabled the protocol.
+ * @throws {WdkCliError} INVALID_ARGUMENT when the protocol's module is disabled.
  */
 export function getProtocol (name) {
   const protocol = getOwn(getProtocols(), name)
@@ -206,6 +205,7 @@ function userObject (key) {
  * @returns {string[]} The network names, packaged first.
  */
 export function getProviderNetworks (name, entry) {
+  /** @type {Set<string>} */
   const names = new Set()
   for (const [network, networkEntry] of Object.entries(walletsFile.networks)) {
     if (hasOwn(networkEntry.providers, name)) names.add(network)
@@ -233,7 +233,8 @@ export function getProviderNetworks (name, entry) {
  * @param {string} [network] - The network name; omit for the network-independent config.
  * @param {ResolveConfigOptions} [options] - Resolution options.
  * @returns {Record<string, unknown>} The merged config passed verbatim to the module.
- * @throws {WdkCliError} When the protocol is unknown, or disabled and `includeDisabled` is not set.
+ * @throws {WdkCliError} INVALID_ARGUMENT when no protocol is registered under that name.
+ * @throws {WdkCliError} INVALID_ARGUMENT when the protocol is disabled and `includeDisabled` is not set.
  */
 export function resolveProtocolConfig (name, network, options = {}) {
   const entry = options.includeDisabled ? findProtocol(name) : getProtocol(name)
@@ -254,14 +255,13 @@ export function resolveProtocolConfig (name, network, options = {}) {
 
 /**
  * Checks that a loaded protocol class exposes the methods its declared kind
- * requires. Used when registering a provider, so a mistyped `kind` is caught
- * at that point instead of surfacing later as a missing-method quote failure.
+ * requires.
  *
  * @param {string} name - The protocol short name, for the error message.
- * @param {ProtocolKind} kind - The declared kind.
- * @param {ProtocolClass} ProtocolClass - The loaded class.
+ * @param {ProtocolKind} kind - The kind the registry declares for the provider.
+ * @param {ProtocolClass} ProtocolClass - The class imported from the provider's module.
  * @returns {void}
- * @throws {WdkCliError} When the class is missing a method the kind requires.
+ * @throws {WdkCliError} INVALID_ARGUMENT when the class is missing a method the kind requires.
  */
 export function assertImplementsKind (name, kind, ProtocolClass) {
   const missing = KIND_METHODS[kind].filter(
@@ -298,8 +298,9 @@ export function servesRequest (protocolKind, requestKind) {
  * The specifier is checked against {@link isRegisteredModule} first.
  *
  * @param {string} module - The protocol module package name.
- * @returns {Promise<Function>} The protocol class (default export).
- * @throws {WdkCliError} When the module is not a registered package, or is registered but not installed.
+ * @returns {Promise<ProtocolClass>} The module's default-exported protocol class, before construction.
+ * @throws {WdkCliError} UNSUPPORTED_MODULE when the package is not registered.
+ * @throws {WdkCliError} UNSUPPORTED_MODULE when the package is registered but not installed.
  */
 export async function loadProtocolClass (module) {
   if (!isRegisteredModule(module)) {
@@ -340,7 +341,8 @@ export function saveCustomProvider (name, entry) {
  *
  * @param {string} name - The protocol short name.
  * @returns {void}
- * @throws {WdkCliError} When the name is a packaged provider or was never added.
+ * @throws {WdkCliError} INVALID_ARGUMENT when the name is a packaged provider.
+ * @throws {WdkCliError} INVALID_ARGUMENT when no custom provider of that name was added.
  */
 export function removeCustomProvider (name) {
   if (isBuiltinProtocol(name)) {
@@ -386,8 +388,9 @@ export function isProviderDisabled (name) {
  * @param {string} name - The protocol short name.
  * @param {boolean} enabled - The desired state.
  * @returns {boolean} True when a stale override was cleared instead.
- * @throws {WdkCliError} When the protocol is unknown, hidden by a disabled module, or
- *   already in the desired state.
+ * @throws {WdkCliError} INVALID_ARGUMENT when no protocol is registered under that name.
+ * @throws {WdkCliError} INVALID_ARGUMENT when the protocol's module is disabled.
+ * @throws {WdkCliError} INVALID_ARGUMENT when the protocol is already in the desired state.
  */
 export function setProviderEnabled (name, enabled) {
   const entry = findProtocol(name)

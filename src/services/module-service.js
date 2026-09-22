@@ -78,12 +78,8 @@ export function getCustomModules () {
 
 /**
  * Returns the names of every module package the CLI knows about: the catalog
- * modules plus any added with `wdk module add`, disabled ones included.
- *
- * This is the allowlist every `import()` of module code must check, not just
- * the commands that register one — config files are writable by any process
- * running as the user, and `import()` takes paths and URLs as readily as
- * package names.
+ * modules plus any added with `wdk module add`, disabled ones included. Every
+ * `import()` of module code must check a specifier against this list first.
  *
  * @returns {string[]} The registered package names.
  */

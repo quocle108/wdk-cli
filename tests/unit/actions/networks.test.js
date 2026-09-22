@@ -14,9 +14,15 @@
 
 import { jest } from '@jest/globals'
 
-import { listNetworks, validateNetworkSpec } from '../../../src/actions/networks.js'
-import { NETWORK_NAMES } from '../../../src/config/networks.js'
-import { configService } from '../../../src/services/config-service.js'
+const getConfig = jest.fn()
+
+// Mocked, not spied on: the real service reads the developer's own config file.
+jest.unstable_mockModule('../../../src/services/config-service.js', () => ({
+  configService: { get: getConfig, set: jest.fn(), delete: jest.fn() }
+}))
+
+const { listNetworks, validateNetworkSpec } = await import('../../../src/actions/networks.js')
+const { NETWORK_NAMES } = await import('../../../src/config/networks.js')
 
 const TRON_ENTRY = {
   name: 'tron',
@@ -31,14 +37,12 @@ const TRON_ENTRY = {
 }
 
 describe('listNetworks', () => {
-  afterEach(() => {
-    jest.restoreAllMocks()
+  beforeEach(() => {
+    getConfig.mockReset()
   })
 
   const withOverrides = (overrides) => {
-    jest.spyOn(configService, 'get').mockImplementation((key) =>
-      key === 'overrides' ? overrides : undefined
-    )
+    getConfig.mockImplementation((key) => (key === 'overrides' ? overrides : undefined))
   }
 
   it('omits disabled networks by default, as the MCP server sees them', () => {
@@ -84,14 +88,12 @@ describe('listNetworks', () => {
 describe('validateNetworkSpec name collisions', () => {
   const SPEC = { network: 'polygon', module: '@tetherto/wdk-wallet-evm' }
 
-  afterEach(() => {
-    jest.restoreAllMocks()
+  beforeEach(() => {
+    getConfig.mockReset()
   })
 
   const withConfig = (values) => {
-    jest.spyOn(configService, 'get').mockImplementation((key) =>
-      Object.hasOwn(values, key) ? values[key] : undefined
-    )
+    getConfig.mockImplementation((key) => (Object.hasOwn(values, key) ? values[key] : undefined))
   }
 
   it('rejects the name of a built-in network', () => {

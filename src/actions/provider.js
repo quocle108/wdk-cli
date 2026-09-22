@@ -59,10 +59,12 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  */
 
 /**
- * @typedef {ProviderInfo & { config: Record<string, unknown>, networks: Record<string, Record<string, unknown>> }} ProviderDetails
- *   The provider's registry fields, its general config, and the effective
- *   config of every network that overrides something for it.
+ * @typedef {Object} ProviderConfigView
+ * @property {Record<string, unknown>} config - The network-independent config, packaged values and user overrides merged.
+ * @property {Record<string, Record<string, unknown>>} networks - The merged config of each network that overrides something, keyed by network name.
  */
+
+/** @typedef {ProviderInfo & ProviderConfigView} ProviderDetails */
 
 /**
  * @typedef {Object} AddProviderResult
@@ -83,7 +85,7 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  *
  * @param {Record<string, unknown>} obj - The spec object.
  * @param {string} field - The field name.
- * @returns {Record<string, unknown> | undefined} The object value.
+ * @returns {Record<string, unknown> | undefined} The field's value, or `undefined` when the field is absent.
  * @throws {WdkCliError} INVALID_ARGUMENT when the field is present but not a plain object.
  */
 function objectField (obj, field) {
@@ -104,8 +106,9 @@ function objectField (obj, field) {
  *
  * @param {unknown} data - The raw spec value (parsed JSON, untrusted input).
  * @returns {ProviderSpec} The validated spec.
- * @throws {WdkCliError} INVALID_ARGUMENT on any malformed field, or when the name is
- *   already taken by a packaged or user-added provider.
+ * @throws {WdkCliError} INVALID_ARGUMENT on any malformed field.
+ * @throws {WdkCliError} INVALID_ARGUMENT when the name is a packaged provider.
+ * @throws {WdkCliError} INVALID_ARGUMENT when a user-added provider of that name already exists.
  * @throws {WdkCliError} UNSUPPORTED_MODULE when `module` is not a registered module package.
  */
 export function validateProviderSpec (data) {
@@ -180,12 +183,12 @@ export function validateProviderSpec (data) {
 }
 
 /**
- * Loads the spec's module and checks it implements the declared kind, so a
- * mistyped kind is caught at registration instead of at quote time.
+ * Loads the spec's module and checks it implements the declared kind.
  *
  * @param {ProviderSpec} spec - The validated spec.
  * @returns {Promise<void>}
- * @throws {WdkCliError} UNSUPPORTED_MODULE when the module is not installed.
+ * @throws {WdkCliError} UNSUPPORTED_MODULE when the module is not a registered package.
+ * @throws {WdkCliError} UNSUPPORTED_MODULE when the module is registered but not installed.
  * @throws {WdkCliError} INVALID_ARGUMENT when the module does not implement the declared kind.
  */
 export async function verifyProviderKind (spec) {
@@ -199,7 +202,7 @@ export async function verifyProviderKind (spec) {
  * @param {string} name - The provider short name.
  * @param {WdkProtocolEntry} entry - The registry entry.
  * @param {Record<string, WdkProtocolEntry>} enabled - The usable providers.
- * @returns {ProviderInfo} The listing entry.
+ * @returns {ProviderInfo} The entry as `provider list` shows it.
  */
 function toInfo (name, entry, enabled) {
   return {
@@ -232,7 +235,7 @@ export function listProviders () {
  * values and the user's `wdk config set` overrides are already merged.
  *
  * @param {string} name - The provider short name.
- * @returns {ProviderDetails} The provider details.
+ * @returns {ProviderDetails} The registry fields and the config the module receives.
  * @throws {WdkCliError} INVALID_ARGUMENT when no provider is registered under that name.
  */
 export function getProviderInfo (name) {
@@ -278,8 +281,9 @@ export function addProvider (spec) {
  * Deletes a user-added provider.
  *
  * @param {string} name - The provider short name.
- * @returns {DeleteProviderResult} The deletion result.
- * @throws {WdkCliError} INVALID_ARGUMENT when the name is a packaged provider or was never added.
+ * @returns {DeleteProviderResult} The deleted provider's name.
+ * @throws {WdkCliError} INVALID_ARGUMENT when the name is a packaged provider.
+ * @throws {WdkCliError} INVALID_ARGUMENT when no custom provider of that name was added.
  */
 export function deleteProvider (name) {
   removeCustomProvider(name)
