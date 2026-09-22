@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { getProtocols, getProtocol } from '../protocol-service.js'
+import { getProtocols, getProtocol, findProtocol } from '../protocol-service.js'
 import { getInstalledVersion } from '../module-service.js'
 import { MoonPayRampProvider } from './moonpay.js'
 import { WdkCliError, ErrorCode } from '../../errors/index.js'
@@ -38,7 +38,7 @@ const ADAPTERS = {
  * @param {string} name - The provider short name.
  * @returns {boolean} True when the provider can be driven.
  */
-export function hasRampAdapter (name) {
+function hasRampAdapter (name) {
   return Object.hasOwn(ADAPTERS, name)
 }
 
@@ -48,7 +48,7 @@ export function hasRampAdapter (name) {
  *
  * @returns {string[]} Provider short names, in packaged order.
  */
-export function getFiatProviders () {
+function getFiatProviders () {
   return Object.entries(getProtocols())
     .filter(([name, entry]) =>
       entry.kind === FIAT && hasRampAdapter(name) && getInstalledVersion(entry.module) !== null
@@ -89,10 +89,15 @@ export function resolveRampProvider (requested) {
 
   const usable = getFiatProviders()
   if (usable.length === 0) {
+    // findProtocol, not getProtocol: the shipped providers may all be disabled,
+    // and building this message must not throw on that.
+    const shipped = Object.keys(ADAPTERS)
+      .map((name) => `${name} (${findProtocol(name)?.module ?? 'not registered'})`)
+      .join(', ')
     throw new WdkCliError(
       'No fiat provider is available.',
       ErrorCode.MISSING_CONFIG,
-      `Install one with: wdk module add --name ${getProtocol('moonpay').module}`
+      `Install or enable one of: ${shipped}`
     )
   }
   if (usable.length > 1) {

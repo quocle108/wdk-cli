@@ -44,8 +44,8 @@ export class BaseRampProvider {
   constructor (name) {
     /** @type {string} */
     this.name = name
-    /** @type {FiatProtocol | undefined} */
-    this._protocol = undefined
+    /** @type {Map<string, FiatProtocol>} */
+    this._protocols = new Map()
   }
 
   /**
@@ -70,16 +70,18 @@ export class BaseRampProvider {
    * @throws {WdkCliError} UNSUPPORTED_MODULE when the module is not installed.
    */
   async _getProtocol (network) {
-    if (!this._protocol) {
-      const ProtocolClass = /** @type {FiatProtocolConstructor} */ (
-        /** @type {unknown} */ (await loadProtocolClass(getProtocol(this.name).module))
-      )
-      this._protocol = new ProtocolClass(
-        undefined,
-        this._moduleConfig(resolveProtocolConfig(this.name, network))
-      )
-    }
-    return this._protocol
+    const cached = this._protocols.get(network)
+    if (cached) return cached
+
+    const ProtocolClass = /** @type {FiatProtocolConstructor} */ (
+      /** @type {unknown} */ (await loadProtocolClass(getProtocol(this.name).module))
+    )
+    const protocol = new ProtocolClass(
+      undefined,
+      this._moduleConfig(resolveProtocolConfig(this.name, network))
+    )
+    this._protocols.set(network, protocol)
+    return protocol
   }
 
   /**
@@ -217,7 +219,12 @@ export class BaseRampProvider {
         `Currencies ${this.name} supports: ${fiats.map((f) => f.code).sort().join(', ')}`
       )
     }
-    return { cryptoCode: code, cryptoDecimals: crypto.decimals, fiatDecimals: fiat.decimals }
+    return {
+      cryptoCode: code,
+      cryptoDecimals: crypto.decimals,
+      fiatCode: fiat.code,
+      fiatDecimals: fiat.decimals
+    }
   }
 
   /**
@@ -225,22 +232,17 @@ export class BaseRampProvider {
    *
    * @protected
    * @param {RampInput} input - The ramp input.
-   * @returns {Promise<Record<string, unknown>>} The shared call options.
+   * @returns {Record<string, unknown>} The shared call options.
    */
-  async _common (input) {
-    const protocol = await this._getProtocol(input.network)
+  _common (input) {
     const { code, extras } = this._slug(input.network, input.token)
-    const fiats = await protocol.getSupportedFiatCurrencies()
-    const wanted = input.fiatCurrency.toLowerCase()
-    const fiatCode = fiats.find((f) => f.code.toLowerCase() === wanted)?.code ?? input.fiatCurrency
-
     const amount = input.fiatAmount !== undefined
       ? { fiatAmount: input.fiatAmount }
       : { cryptoAmount: input.cryptoAmount }
 
     return {
       cryptoAsset: code,
-      fiatCurrency: fiatCode,
+      fiatCurrency: input.fiatCode,
       ...amount,
       ...(Object.keys(extras).length > 0 && { config: extras })
     }
@@ -255,7 +257,7 @@ export class BaseRampProvider {
    */
   async quote (input, direction) {
     const protocol = await this._getProtocol(input.network)
-    const options = await this._common(input)
+    const options = this._common(input)
     try {
       return direction === 'buy'
         ? await protocol.quoteBuy(options)
@@ -274,7 +276,7 @@ export class BaseRampProvider {
    */
   async buildUrl (input, direction) {
     const protocol = await this._getProtocol(input.network)
-    const options = await this._common(input)
+    const options = this._common(input)
     if (direction === 'buy') {
       const { buyUrl } = await protocol.buy({ ...options, recipient: input.walletAddress })
       return { url: buyUrl }

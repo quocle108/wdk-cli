@@ -88,6 +88,7 @@ export async function createRampUrl (input) {
     token,
     walletAddress: address,
     fiatCurrency,
+    fiatCode: assets.fiatCode,
     fiatAmount: input.fiatAmount
       ? BigInt(humanToBaseUnits(input.fiatAmount, assets.fiatDecimals, 'fiatAmount'))
       : undefined,

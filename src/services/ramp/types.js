@@ -20,6 +20,7 @@
  * @typedef {Object} ResolvedAssets
  * @property {string} cryptoCode - The provider's identifier for the crypto asset.
  * @property {number} cryptoDecimals - The number of decimals for the crypto asset.
+ * @property {string} fiatCode - The provider's own spelling of the fiat currency code.
  * @property {number} fiatDecimals - The number of decimals for the fiat currency.
  */
 
@@ -28,7 +29,8 @@
  * @property {string} network - The blockchain network name.
  * @property {string} token - The CLI token name.
  * @property {string} walletAddress - The wallet address for receiving (buy) or refunding (sell).
- * @property {string} fiatCurrency - The fiat currency code (e.g. "usd").
+ * @property {string} fiatCurrency - The fiat currency code as the user gave it (e.g. "usd").
+ * @property {string} fiatCode - The provider's own spelling of that code, from its listing.
  * @property {bigint} [fiatAmount] - The fiat amount in base units.
  * @property {bigint} [cryptoAmount] - The crypto amount in base units.
  * @property {number} fiatDecimals - The number of decimals for the fiat currency.
