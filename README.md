@@ -398,7 +398,7 @@ wdk sell --network ethereum --token eth --fiat-amount 200        # Sell ETH for 
 wdk sell --network polygon --token usdt --crypto-amount 50       # Sell 50 USDT on Polygon
 ```
 
-Uses MoonPay as the fiat provider. All three config values are required:
+The fiat provider comes from the provider registry, like swap and bridge. MoonPay ships enabled; all three of its config values are required:
 
 ```bash
 wdk config set --key providers.moonpay.config.apiKey --value <your-publishable-key>
@@ -412,12 +412,47 @@ wdk config set --key providers.moonpay.config.environment --value sandbox    # o
 |------|-------------|
 | `--network <network>` | Blockchain network (required) |
 | `--token <token>` | Crypto asset code, e.g. `usdt`, `eth`, `btc` (required) |
-| `--module <module>` | Fiat provider (default: `moonpay`) |
+| `--provider <name>` | Fiat provider (default: the only enabled one) |
 | `--fiat-currency <currency>` | Fiat currency code (default: `usd`) |
 | `--fiat-amount <value>` | Fiat amount (mutually exclusive with `--crypto-amount`) |
 | `--crypto-amount <value>` | Crypto amount (mutually exclusive with `--fiat-amount`) |
 
-Supported tokens are derived from the registry — any token with `metadata.slugs.moonpay` set in `wdk.tokens.json` (or a custom token added via `wdk token add`). Environment validation prevents using production MoonPay with testnet networks (and vice versa).
+`--provider` is only needed when more than one fiat provider is enabled; with several enabled and none named, the CLI lists them and asks you to pick.
+
+Supported tokens are whatever the provider has a mapping for — `metadata.slugs.<provider>` in `wdk.tokens.json`, or on a custom token added via `wdk token add`. There is no fallback: an unmapped token is an error naming the tokens that provider does carry, never a guess from the symbol.
+
+### Adding another fiat provider
+
+Fiat providers ship with the CLI and cannot be registered with `wdk provider add`
+— each one needs a small CLI-side adapter, because WDK's `FiatProtocol` covers
+the calls but not how a provider is credentialed, how it names tokens, or what
+its `environment` values mean.
+
+Adding one is four steps:
+
+1. Write `src/services/ramp/<name>.js`, extending `BaseRampProvider`. Override
+   `_moduleConfig` if the module takes callbacks rather than values (a widget
+   URL minted by your backend, say), and `validateEnvironment` if its
+   environment has to agree with the network. A provider needing neither is a
+   three-line class — the base handles module loading, token resolution,
+   quoting and URL building.
+2. Register it in the `ADAPTERS` map in `src/services/ramp/index.js`.
+3. Add the package under `modules` and the provider under `providers` in
+   `wdk.config.json`, then run `npm run sync-modules`.
+4. Map the tokens it carries, via `metadata.slugs.<name>` in `wdk.tokens.json`
+   or per-user `overrides.tokens.<network>/<token>.metadata.slugs.<name>`.
+
+Users then configure and toggle it like any other provider:
+
+```bash
+wdk provider list
+wdk config set --key providers.<name>.config.apiKey --value <key>
+wdk provider disable --name <name>
+wdk buy --provider <name> --network ethereum --token eth --fiat-amount 100
+```
+
+`--provider` is only required when more than one fiat provider is available.
+
 
 MoonPay is an entry of the `providers` registry with `kind: fiat` (see [Provider](#provider)), so it is configured like any other provider and `wdk provider disable --name moonpay` turns `buy` and `sell` off:
 

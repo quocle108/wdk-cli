@@ -28,6 +28,7 @@ import {
   removeCustomProvider
 } from '../services/protocol-service.js'
 import { isRegisteredModule } from '../services/module-service.js'
+import { FIAT } from '../services/ramp/index.js'
 import { hasOwn } from '../services/override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
@@ -144,6 +145,13 @@ export function validateProviderSpec (data) {
     throw new WdkCliError(
       `Provider spec "kind" must be one of: ${PROTOCOL_KINDS.join(', ')}`,
       ErrorCode.INVALID_ARGUMENT
+    )
+  }
+  if (kind === FIAT) {
+    throw new WdkCliError(
+      'Fiat providers cannot be added.',
+      ErrorCode.INVALID_ARGUMENT,
+      'Fiat providers ship with the CLI. See the available ones with: wdk provider list'
     )
   }
 

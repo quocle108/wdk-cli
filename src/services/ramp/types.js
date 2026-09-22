@@ -18,7 +18,7 @@
 
 /**
  * @typedef {Object} ResolvedAssets
- * @property {string} cryptoCode - The provider-canonical crypto asset code.
+ * @property {string} cryptoCode - The provider's identifier for the crypto asset.
  * @property {number} cryptoDecimals - The number of decimals for the crypto asset.
  * @property {number} fiatDecimals - The number of decimals for the fiat currency.
  */
@@ -26,7 +26,7 @@
 /**
  * @typedef {Object} RampInput
  * @property {string} network - The blockchain network name.
- * @property {string} token - The token alias.
+ * @property {string} token - The CLI token name.
  * @property {string} walletAddress - The wallet address for receiving (buy) or refunding (sell).
  * @property {string} fiatCurrency - The fiat currency code (e.g. "usd").
  * @property {bigint} [fiatAmount] - The fiat amount in base units.
@@ -49,13 +49,38 @@
  */
 
 /**
- * The contract every on-ramp / off-ramp provider must implement.
+ * The part of the SDK's `FiatProtocol` contract the adapters call.
+ *
+ * @typedef {Object} FiatProtocol
+ * @property {(options: Record<string, unknown>) => Promise<QuoteResult>} quoteBuy - Prices a purchase.
+ * @property {(options: Record<string, unknown>) => Promise<QuoteResult>} quoteSell - Prices a sale.
+ * @property {(options: Record<string, unknown>) => Promise<{ buyUrl: string }>} buy - Builds the hosted buy URL.
+ * @property {(options: Record<string, unknown>) => Promise<{ sellUrl: string }>} sell - Builds the hosted sell URL.
+ * @property {() => Promise<SupportedAsset[]>} getSupportedCryptoAssets - Lists the crypto assets the provider carries.
+ * @property {() => Promise<SupportedAsset[]>} getSupportedFiatCurrencies - Lists the fiat currencies the provider carries.
+ */
+
+/**
+ * An entry from a provider's supported-asset or supported-currency listing.
+ *
+ * @typedef {Object} SupportedAsset
+ * @property {string} code - The provider's identifier for the asset or currency.
+ * @property {number} decimals - The number of decimal places its amounts use.
+ * @property {string} [networkCode] - The provider's name for the network the asset lives on,
+ *   when it lists the same code on more than one.
+ */
+
+/**
+ * The CLI-side contract every on-ramp / off-ramp provider must implement. One
+ * adapter per provider, holding whatever that provider needs beyond the SDK's
+ * `FiatProtocol`: how it is credentialed, how it names tokens and currencies,
+ * and whether its environment has to agree with the network.
  *
  * @typedef {Object} RampProvider
- * @property {string} name - The provider identifier.
- * @property {(network: string) => void} validateEnvironment - Throws if the provider environment does not match the network (e.g. production vs. testnet).
- * @property {(network: string, token: string, fiatCurrency: string) => Promise<ResolvedAssets>} resolveAssets - Resolves provider-canonical asset codes and decimals.
- * @property {(input: RampInput, direction: Direction) => Promise<QuoteResult | undefined>} quote - Returns a price quote, or undefined when the provider cannot quote this pair/direction.
+ * @property {string} name - The provider short name, as the registry lists it.
+ * @property {(network: string) => Promise<void>} validateEnvironment - Throws when the provider's environment does not match the network (e.g. production vs. testnet).
+ * @property {(network: string, token: string, fiatCurrency: string) => Promise<ResolvedAssets>} resolveAssets - Resolves the provider's asset code and both sides' decimals.
+ * @property {(input: RampInput, direction: Direction) => Promise<QuoteResult | undefined>} quote - Returns a price quote, or undefined when the provider cannot price this pair.
  * @property {(input: RampInput, direction: Direction) => Promise<UrlResult>} buildUrl - Builds the hosted widget URL for the requested direction.
  */
 

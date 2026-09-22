@@ -12,270 +12,61 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import MoonPayProtocol from '@tetherto/wdk-protocol-fiat-moonpay'
-import { WdkCliError, ErrorCode } from '../../errors/index.js'
-import { resolveAsset } from '../../config/ramp.js'
+import { BaseRampProvider, postToEndpoint, assertEnvironment } from './base.js'
 import { isTestnet } from '../../config/networks.js'
-import { configService } from '../config-service.js'
-import { resolveProtocolConfig } from '../protocol-service.js'
+import { WdkCliError, ErrorCode } from '../../errors/index.js'
 
-/** @typedef {import('./types.js').RampProvider} RampProvider */
-/** @typedef {import('./types.js').RampInput} RampInput */
-/** @typedef {import('./types.js').ResolvedAssets} ResolvedAssets */
-/** @typedef {import('./types.js').QuoteResult} QuoteResult */
-/** @typedef {import('./types.js').UrlResult} UrlResult */
-/** @typedef {import('./types.js').Direction} Direction */
-
-/** The provider short name MoonPay is registered under. */
-const PROVIDER = 'moonpay'
+/** The environment value that means MoonPay's test environment. */
+const TESTNET_ENVIRONMENT = 'sandbox'
 
 /**
- * @typedef {Object} MoonPayConfig
- * @property {string} apiKey - The MoonPay public API key.
- * @property {string} signUrl - The URL of the local signing server.
- * @property {'production' | 'sandbox'} environment - The MoonPay environment.
+ * MoonPay on/off ramp. Its `signUrl` config names a signing server rather than
+ * holding a value, and its `environment` has to agree with the network.
  */
-
-/**
- * Loads and validates MoonPay config from the providers registry, falling back
- * to the pre-registry `ramp.moonpay.*` keys so existing setups keep working.
- *
- * @returns {MoonPayConfig} The validated MoonPay configuration.
- * @throws {WdkCliError} MISSING_CONFIG when a required field is unset, INVALID_CONFIG
- *   when the environment is not `production` or `sandbox`, and when the provider
- *   or its module is disabled.
- */
-function loadConfig () {
-  const resolved = resolveProtocolConfig(PROVIDER)
-  // `ramp.moonpay.*` was where these lived before the providers registry.
-  const read = (field) => String(
-    resolved[field] || configService.get(`ramp.${PROVIDER}.${field}`) || ''
-  )
-
-  const apiKey = read('apiKey')
-  const signUrl = read('signUrl')
-  const env = read('environment')
-
-  const missing = ['apiKey', 'signUrl', 'environment'].filter((f) => !read(f))
-  if (missing.length > 0) {
-    const commands = missing
-      .map((f) => `  wdk config set --key providers.${PROVIDER}.config.${f} --value <value>`)
-      .join('\n')
-    throw new WdkCliError(
-      `MoonPay not configured. Missing: ${missing.join(', ')}`,
-      ErrorCode.MISSING_CONFIG,
-      `Set required config:\n${commands}`
-    )
-  }
-  if (env !== 'production' && env !== 'sandbox') {
-    throw new WdkCliError(
-      `Invalid providers.${PROVIDER}.config.environment '${env}'. Must be 'production' or 'sandbox'.`,
-      ErrorCode.INVALID_CONFIG
-    )
-  }
-  return { apiKey, signUrl, environment: env }
-}
-
-/**
- * Posts a URL to the MoonPay signing server and returns the signed URL.
- *
- * @param {string} url - The URL to sign.
- * @param {string} endpoint - The sign server endpoint URL.
- * @returns {Promise<string>} The signed URL.
- */
-async function postToSignServer (url, endpoint) {
-  let response
-  try {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ urlForSignature: url })
-    })
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error)
-    throw new WdkCliError(
-      `Cannot reach MoonPay sign server at '${endpoint}': ${detail}`,
-      ErrorCode.SIGN_FAILED,
-      'Check that ramp.moonpay.signUrl is correct and the server is reachable.'
-    )
-  }
-  if (!response.ok) {
-    throw new WdkCliError(
-      `Failed to sign MoonPay URL: ${response.status} ${response.statusText}`,
-      ErrorCode.SIGN_FAILED
-    )
-  }
-  const data = await response.json()
-  if (typeof data.signedUrl !== 'string' || !data.signedUrl) {
-    throw new WdkCliError(
-      'Sign server returned invalid response: missing signedUrl',
-      ErrorCode.SIGN_FAILED
-    )
-  }
-  return data.signedUrl
-}
-
-/**
- * MoonPay implementation of the RampProvider interface.
- *
- * @implements {RampProvider}
- */
-export class MoonPayRampProvider {
+export class MoonPayRampProvider extends BaseRampProvider {
   constructor () {
-    /** @type {'moonpay'} */
-    this.name = 'moonpay'
-    /** @type {MoonPayProtocol | undefined} */
-    this.protocol = undefined
-    /** @type {'production' | 'sandbox' | undefined} */
-    this.environment = undefined
+    super('moonpay')
   }
 
   /**
-   * Returns the lazily-initialised MoonPay protocol instance.
+   * Turns the stored `signUrl` into the callback the module expects, dropping
+   * it when unset.
    *
-   * @returns {MoonPayProtocol} The protocol instance.
+   * @protected
+   * @param {Record<string, unknown>} config - The merged registry config.
+   * @returns {Record<string, unknown>} The module config.
    */
-  #getProtocol () {
-    if (!this.protocol) {
-      const config = loadConfig()
-      this.environment = config.environment
-      this.protocol = new MoonPayProtocol(undefined, {
-        apiKey: config.apiKey,
-        environment: config.environment,
-        signUrl: (url) => postToSignServer(url, config.signUrl)
-      })
-    }
-    return this.protocol
+  _moduleConfig (config) {
+    const { signUrl, ...rest } = config
+    if (typeof signUrl !== 'string' || !signUrl) return rest
+    return { ...rest, signUrl: (url) => postToEndpoint(signUrl, url) }
   }
 
   /**
-   * Validates that the configured MoonPay environment matches the network type.
+   * Refuses a production environment on a testnet, and a sandbox one on a
+   * mainnet.
    *
    * @param {string} network - The network name.
-   * @returns {void}
+   * @returns {Promise<void>}
+   * @throws {WdkCliError} MISSING_CONFIG when the environment is not configured.
+   * @throws {WdkCliError} INVALID_CONFIG when it is neither `production` nor `sandbox`.
+   * @throws {WdkCliError} ENVIRONMENT_MISMATCH when it disagrees with the network.
    */
-  validateEnvironment (network) {
-    this.#getProtocol()
-    if (this.environment === 'production' && isTestnet(network)) {
+  async validateEnvironment (network) {
+    const environment = this._config(network).environment
+    if (typeof environment !== 'string' || !environment) {
       throw new WdkCliError(
-        `Cannot use production MoonPay with testnet '${network}'.`,
-        ErrorCode.ENVIRONMENT_MISMATCH
+        'MoonPay environment is not configured.',
+        ErrorCode.MISSING_CONFIG,
+        'Set it with: wdk config set --key providers.moonpay.config.environment --value sandbox'
       )
     }
-    if (this.environment === 'sandbox' && !isTestnet(network)) {
+    if (environment !== 'production' && environment !== TESTNET_ENVIRONMENT) {
       throw new WdkCliError(
-        `Cannot use sandbox MoonPay with mainnet '${network}'.`,
-        ErrorCode.ENVIRONMENT_MISMATCH
+        `Invalid MoonPay environment '${environment}'. Must be 'production' or 'sandbox'.`,
+        ErrorCode.INVALID_CONFIG
       )
     }
-  }
-
-  /**
-   * Resolves crypto and fiat asset metadata from MoonPay's supported assets list.
-   *
-   * @param {string} network - The network name.
-   * @param {string} token - The token contract address or symbol.
-   * @param {string} fiatCurrency - The fiat currency code (e.g. "usd").
-   * @returns {Promise<ResolvedAssets>} The resolved asset metadata.
-   */
-  async resolveAssets (network, token, fiatCurrency) {
-    const protocol = this.#getProtocol()
-    const { code: cryptoCode } = resolveAsset(network, token, 'moonpay')
-    const [cryptos, fiats] = await Promise.all([
-      protocol.getSupportedCryptoAssets(),
-      protocol.getSupportedFiatCurrencies()
-    ])
-    const cryptoInfo = cryptos.find((a) => a.code === cryptoCode)
-    if (!cryptoInfo) {
-      throw new WdkCliError(
-        `Crypto asset '${cryptoCode}' is not supported by MoonPay.`,
-        ErrorCode.TOKEN_NOT_SUPPORTED
-      )
-    }
-    const fiatInfo = fiats.find((f) => f.code === fiatCurrency)
-    if (!fiatInfo) {
-      throw new WdkCliError(
-        `Fiat currency '${fiatCurrency}' is not supported by MoonPay.`,
-        ErrorCode.INVALID_ARGUMENT
-      )
-    }
-    return { cryptoCode, cryptoDecimals: cryptoInfo.decimals, fiatDecimals: fiatInfo.decimals }
-  }
-
-  /**
-   * Fetches a buy or sell quote from MoonPay.
-   *
-   * @param {RampInput} input - The ramp input parameters.
-   * @param {Direction} direction - The ramp direction ("buy" or "sell").
-   * @returns {Promise<QuoteResult | undefined>} The quote, or undefined if unavailable.
-   */
-  async quote (input, direction) {
-    const protocol = this.#getProtocol()
-    const { code: cryptoAsset } = resolveAsset(input.network, input.token, 'moonpay')
-    try {
-      if (direction === 'buy') {
-        const spread = this.#amountSpread(input)
-        const q = await protocol.quoteBuy({
-          cryptoAsset,
-          fiatCurrency: input.fiatCurrency,
-          ...spread
-        })
-        return { fiatAmount: q.fiatAmount, cryptoAmount: q.cryptoAmount, fee: q.fee, rate: q.rate }
-      }
-      // Sell quotes require cryptoAmount on the MoonPay side.
-      if (input.cryptoAmount === undefined) return undefined
-      const q = await protocol.quoteSell({
-        cryptoAsset,
-        fiatCurrency: input.fiatCurrency,
-        cryptoAmount: input.cryptoAmount
-      })
-      return { fiatAmount: q.fiatAmount, cryptoAmount: q.cryptoAmount, fee: q.fee, rate: q.rate }
-    } catch {
-      return undefined
-    }
-  }
-
-  /**
-   * Builds a signed MoonPay buy or sell URL for the given ramp input.
-   *
-   * @param {RampInput} input - The ramp input parameters.
-   * @param {Direction} direction - The ramp direction ("buy" or "sell").
-   * @returns {Promise<UrlResult>} The signed redirect URL.
-   */
-  async buildUrl (input, direction) {
-    const protocol = this.#getProtocol()
-    const { code: cryptoAsset } = resolveAsset(input.network, input.token, 'moonpay')
-    const spread = this.#amountSpread(input)
-    if (direction === 'buy') {
-      const { buyUrl } = await protocol.buy({
-        cryptoAsset,
-        fiatCurrency: input.fiatCurrency,
-        recipient: input.walletAddress,
-        ...spread
-      })
-      return { url: buyUrl }
-    }
-    const { sellUrl } = await protocol.sell({
-      cryptoAsset,
-      fiatCurrency: input.fiatCurrency,
-      refundAddress: input.walletAddress,
-      ...spread
-    })
-    return { url: sellUrl }
-  }
-
-  /**
-   * Extracts a fiat or crypto amount object for use in MoonPay protocol calls.
-   *
-   * @param {RampInput} input - The ramp input parameters.
-   * @returns {{ fiatAmount: bigint } | { cryptoAmount: bigint }} The amount spread object.
-   */
-  #amountSpread (input) {
-    if (input.fiatAmount !== undefined) return { fiatAmount: input.fiatAmount }
-    if (input.cryptoAmount !== undefined) return { cryptoAmount: input.cryptoAmount }
-    throw new WdkCliError(
-      'Must specify either fiatAmount or cryptoAmount.',
-      ErrorCode.INVALID_ARGUMENT
-    )
+    assertEnvironment(this.name, network, environment, TESTNET_ENVIRONMENT, isTestnet(network))
   }
 }

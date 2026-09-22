@@ -15,8 +15,7 @@
 import { daemonClient } from '../daemon/client.js'
 import { validateNetwork } from '../config/networks.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
-import { validateModule } from '../config/ramp.js'
-import { getRampProvider } from '../services/ramp/index.js'
+import { resolveRampProvider } from '../services/ramp/index.js'
 import { formatAmount } from '../ui/formatters.js'
 import { humanToBaseUnits } from '../ui/parsers.js'
 
@@ -25,8 +24,8 @@ import { humanToBaseUnits } from '../ui/parsers.js'
  * @property {'buy' | 'sell'} direction - Whether to buy or sell crypto.
  * @property {string} network - The blockchain network name.
  * @property {number} index - The BIP-44 account index.
- * @property {string} token - Crypto asset code (e.g. "usdt", "eth", "btc").
- * @property {string} [module] - Fiat provider module name (default: "moonpay").
+ * @property {string} token - The CLI token name (e.g. "usdt", "eth", "btc").
+ * @property {string} [provider] - Fiat provider short name; defaults to the only enabled one.
  * @property {string} [fiatCurrency] - Fiat currency code (default: "usd").
  * @property {string} [fiatAmount] - Human-readable fiat amount (e.g. "100"); mutually exclusive with cryptoAmount.
  * @property {string} [cryptoAmount] - Human-readable crypto amount (e.g. "0.05"); mutually exclusive with fiatAmount.
@@ -38,21 +37,25 @@ import { humanToBaseUnits } from '../ui/parsers.js'
  * @property {'buy' | 'sell'} direction - The ramp direction.
  * @property {string} network - The blockchain network name.
  * @property {string} address - The wallet address used for the transaction.
- * @property {string} token - Lowercased token code.
- * @property {string} module - The fiat provider module name.
+ * @property {string} token - Lowercased token name.
+ * @property {string} provider - The fiat provider short name.
  * @property {string} fiatCurrency - Lowercased fiat currency code.
  * @property {string} payAmount - Formatted amount the user will pay.
- * @property {string} [receiveAmount] - Formatted amount the user will receive (when quote available).
- * @property {string} [fee] - Formatted provider fee (when quote available).
- * @property {string} [rate] - Exchange rate string (when quote available).
+ * @property {string} [receiveAmount] - Formatted amount the user will receive (when a quote was available).
+ * @property {string} [fee] - Formatted provider fee (when a quote was available).
+ * @property {string} [rate] - Exchange rate string (when a quote was available).
  * @property {string} url - The provider URL to open in a browser.
  */
 
 /**
- * Builds a fiat on-ramp or off-ramp URL for the given network and token.
+ * Builds a fiat on-ramp or off-ramp URL for the given network and token, via
+ * the registered fiat provider.
  *
  * @param {CreateRampUrlInput} input - The ramp URL parameters.
  * @returns {Promise<RampResult>} The ramp result including the provider URL.
+ * @throws {WdkCliError} INVALID_ARGUMENT when both or neither of the amounts are given.
+ * @throws {WdkCliError} TOKEN_NOT_SUPPORTED when the token has no mapping for the provider.
+ * @throws {WdkCliError} ENVIRONMENT_MISMATCH when the provider's environment disagrees with the network.
  */
 export async function createRampUrl (input) {
   if (input.fiatAmount && input.cryptoAmount) {
@@ -67,43 +70,40 @@ export async function createRampUrl (input) {
       ErrorCode.INVALID_ARGUMENT
     )
   }
+
   const wallet = await daemonClient.requireUnlocked(input.wallet)
   validateNetwork(input.network)
-  const module = validateModule(input.module ?? 'moonpay')
+
+  const provider = resolveRampProvider(input.provider)
+  const token = input.token.toLowerCase()
   const fiatCurrency = input.fiatCurrency ?? 'usd'
 
-  const provider = getRampProvider(module)
-  provider.validateEnvironment(input.network)
+  await provider.validateEnvironment(input.network)
 
   const address = await daemonClient.getAddress(input.network, input.index, wallet)
-  const assets = await provider.resolveAssets(input.network, input.token, fiatCurrency)
-
-  const fiatAmount = input.fiatAmount
-    ? BigInt(humanToBaseUnits(input.fiatAmount, assets.fiatDecimals, 'fiatAmount'))
-    : undefined
-  const cryptoAmount = input.cryptoAmount
-    ? BigInt(humanToBaseUnits(input.cryptoAmount, assets.cryptoDecimals, 'cryptoAmount'))
-    : undefined
+  const assets = await provider.resolveAssets(input.network, token, fiatCurrency)
 
   const rampInput = {
     network: input.network,
-    token: input.token.toLowerCase(),
+    token,
     walletAddress: address,
     fiatCurrency,
-    fiatAmount,
-    cryptoAmount,
+    fiatAmount: input.fiatAmount
+      ? BigInt(humanToBaseUnits(input.fiatAmount, assets.fiatDecimals, 'fiatAmount'))
+      : undefined,
+    cryptoAmount: input.cryptoAmount
+      ? BigInt(humanToBaseUnits(input.cryptoAmount, assets.cryptoDecimals, 'cryptoAmount'))
+      : undefined,
     fiatDecimals: assets.fiatDecimals,
     cryptoDecimals: assets.cryptoDecimals
   }
 
   const quote = await provider.quote(rampInput, input.direction)
-  const urlResult = await provider.buildUrl(rampInput, input.direction)
+  const { url } = await provider.buildUrl(rampInput, input.direction)
 
   const isBuy = input.direction === 'buy'
-  const fiatSymbol = fiatCurrency.toUpperCase()
-  const tokenSymbol = input.token.toUpperCase()
-  const fiat = (amount) => formatAmount(amount, assets.fiatDecimals, fiatSymbol)
-  const crypto = (amount) => formatAmount(amount, assets.cryptoDecimals, tokenSymbol)
+  const fiat = (value) => formatAmount(value, assets.fiatDecimals, fiatCurrency.toUpperCase())
+  const crypto = (value) => formatAmount(value, assets.cryptoDecimals, token.toUpperCase())
 
   let payAmount
   let receiveAmount
@@ -111,20 +111,22 @@ export async function createRampUrl (input) {
     payAmount = isBuy ? fiat(quote.fiatAmount) : crypto(quote.cryptoAmount)
     receiveAmount = isBuy ? crypto(quote.cryptoAmount) : fiat(quote.fiatAmount)
   } else {
-    payAmount = fiatAmount !== undefined ? fiat(fiatAmount) : crypto(cryptoAmount)
+    payAmount = rampInput.fiatAmount !== undefined
+      ? fiat(rampInput.fiatAmount)
+      : crypto(rampInput.cryptoAmount)
   }
 
   return {
     direction: input.direction,
     network: input.network,
     address,
-    token: input.token.toLowerCase(),
-    module,
+    token,
+    provider: provider.name,
     fiatCurrency,
     payAmount,
     receiveAmount,
     fee: quote ? fiat(quote.fee) : undefined,
     rate: quote?.rate,
-    url: urlResult.url
+    url
   }
 }

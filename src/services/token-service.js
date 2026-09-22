@@ -139,6 +139,23 @@ function normalizeMetadata (metadata) {
 }
 
 /**
+ * Applies the user's `overrides.tokens.<id>.metadata.slugs` deltas to an asset.
+ * Each system is merged individually, so adding a mapping for one provider
+ * leaves the packaged mappings for the others in place.
+ *
+ * @param {CliTokenAsset} asset - The asset as the catalog or user config defines it.
+ * @returns {CliTokenAsset} The asset with any slug deltas applied.
+ */
+function withSlugOverrides (asset) {
+  const slugs = getOwn(getOverrides().tokens, asset.id)?.metadata?.slugs
+  if (!slugs || typeof slugs !== 'object') return asset
+  return {
+    ...asset,
+    metadata: { ...asset.metadata, slugs: { ...asset.metadata?.slugs, ...slugs } }
+  }
+}
+
+/**
  * Maps a registry asset back to the CLI's `TokenEntry` shape, so command
  * output stays independent of registry-internal fields.
  *
@@ -189,13 +206,15 @@ function getRegistry (includeDisabled = false) {
   }
 
   const keep = (id) => includeDisabled || !isDisabled('tokens', id)
-  const registry = new CliTokenAssetRegistry(tokensFile.assets.filter((a) => keep(a.id)))
+  const registry = new CliTokenAssetRegistry(
+    tokensFile.assets.filter((a) => keep(a.id)).map(withSlugOverrides)
+  )
   if (custom) {
     for (const [network, entries] of Object.entries(custom)) {
       for (const [slug, entry] of Object.entries(entries)) {
         if (!keep(`${network}/${slug}`)) continue
         try {
-          registry.registerAsset(customEntryToAsset(network, slug, entry), true)
+          registry.registerAsset(withSlugOverrides(customEntryToAsset(network, slug, entry)), true)
         } catch (error) {
           const issue = error.issues?.[0]
           const detail = issue ? `${issue.path.join('.') || 'entry'}: ${issue.message}` : error.message
