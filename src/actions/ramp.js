@@ -44,6 +44,8 @@ import { humanToBaseUnits } from '../ui/parsers.js'
  * @property {string} [receiveAmount] - Formatted amount the user will receive (when a quote was available).
  * @property {string} [fee] - Formatted provider fee (when a quote was available).
  * @property {string} [rate] - Exchange rate string (when a quote was available).
+ * @property {string} [quoteUnavailable] - Why the provider could not price the pair,
+ *   present only when it could not.
  * @property {string} url - The provider URL to open in a browser.
  */
 
@@ -96,7 +98,7 @@ export async function createRampUrl (input) {
     cryptoDecimals: assets.cryptoDecimals
   }
 
-  const quote = await quoteFiat(provider, rampInput, input.direction)
+  const { quote, reason } = await quoteFiat(provider, rampInput, input.direction)
   const { url } = await buildFiatUrl(provider, rampInput, input.direction)
 
   const isBuy = input.direction === 'buy'
@@ -125,6 +127,7 @@ export async function createRampUrl (input) {
     receiveAmount,
     fee: quote ? fiat(quote.fee) : undefined,
     rate: quote?.rate,
+    ...(quote ? {} : { quoteUnavailable: reason }),
     url
   }
 }

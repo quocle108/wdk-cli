@@ -284,7 +284,7 @@ describe('quote and buildUrl', () => {
     const quoteBuy = jest.fn().mockResolvedValue(DUMMY_QUOTE)
     withModule({ ...EMPTY_LISTINGS, quoteBuy })
 
-    const quote = await quoteFiat('moonpay', INPUT, 'buy')
+    const { quote } = await quoteFiat('moonpay', INPUT, 'buy')
 
     expect(quoteBuy).toHaveBeenCalledWith({
       cryptoAsset: 'usdt_trx', fiatCurrency: 'USD', fiatAmount: 10000n
@@ -303,10 +303,13 @@ describe('quote and buildUrl', () => {
     })
   })
 
-  it('reports no quote rather than failing when the provider cannot price it', async () => {
+  it('reports why the provider could not price it, rather than failing', async () => {
     withModule({ ...EMPTY_LISTINGS, quoteBuy: async () => { throw new Error('no liquidity') } })
 
-    await expect(quoteFiat('moonpay', INPUT, 'buy')).resolves.toBeUndefined()
+    const { quote, reason } = await quoteFiat('moonpay', INPUT, 'buy')
+
+    expect(quote).toBeUndefined()
+    expect(reason).toBe('no liquidity')
   })
 
   it('names the wallet as recipient on a buy', async () => {

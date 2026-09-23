@@ -85,6 +85,9 @@ async function handleRampAction (direction, options, program) {
         `  Rate:     1 ${result.token.toUpperCase()} ≈ ${result.rate} ${result.fiatCurrency.toUpperCase()}`
       )
     }
+    if (result.quoteUnavailable) {
+      console.log(`  Quote:    ${chalk.dim(`unavailable — ${result.quoteUnavailable}`)}`)
+    }
     console.log()
     console.log(`  ${chalk.cyan(result.url)}`)
     console.log()

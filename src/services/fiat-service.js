@@ -407,22 +407,29 @@ function buildFiatOptions (provider, input) {
 }
 
 /**
- * Asks the provider for a quote, answering `undefined` when it cannot price the
- * pair. A rejected credential is raised rather than reported as no quote.
+ * @typedef {Object} QuoteAttempt
+ * @property {QuoteResult} [quote] - The quote, when the provider priced the pair.
+ * @property {string} [reason] - Why the provider could not price it, otherwise.
+ */
+
+/**
+ * Asks the provider for a quote. A provider that cannot price the pair reports
+ * why rather than answering nothing; a rejected credential is raised.
  *
  * @param {string} provider - The provider short name.
  * @param {RampInput} input - The ramp input.
  * @param {Direction} direction - The ramp direction.
- * @returns {Promise<QuoteResult | undefined>} The quote, or undefined when the pair cannot be priced.
+ * @returns {Promise<QuoteAttempt>} The quote, or the reason there is none.
  * @throws {WdkCliError} INVALID_CONFIG when the provider rejected the credentials.
  */
 export async function quoteFiat (provider, input, direction) {
   const protocol = await getFiatProtocol(provider, input.network)
   const options = buildFiatOptions(provider, input)
   try {
-    return direction === 'buy'
+    const quote = direction === 'buy'
       ? await protocol.quoteBuy(options)
       : await protocol.quoteSell(options)
+    return { quote }
   } catch (error) {
     if (error instanceof WdkCliError) throw error
     const message = error instanceof Error ? error.message : String(error)
@@ -433,7 +440,7 @@ export async function quoteFiat (provider, input, direction) {
         `Check its credentials with: wdk provider info --name ${provider}`
       )
     }
-    return undefined
+    return { reason: message }
   }
 }
 
