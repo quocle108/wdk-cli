@@ -37,7 +37,8 @@ jest.unstable_mockModule('../../../src/services/module-service.js', () => ({
   getInstalledVersion
 }))
 
-const { resolveRampProvider } = await import('../../../src/services/ramp/index.js')
+const { resolveFiatProvider, resolveAssets, quoteFiat, buildFiatUrl, buildModuleConfig } =
+  await import('../../../src/services/fiat-service.js')
 
 const require = createRequire(import.meta.url)
 const catalog = require('../../../wdk.config.json')
@@ -47,18 +48,25 @@ const MOONPAY_MODULE = catalog.providers.moonpay.module
 /** How the stub module was constructed, captured for assertions. */
 let captured
 
+/**
+ * The packaged entry ships `environment: ""`, which the module contract treats
+ * as unset. Tests that are not about that supply a value, as a user must.
+ */
+const CONFIGURED = { 'providers.moonpay.config': { environment: 'sandbox' } }
+
 beforeEach(() => {
   getConfig.mockReset()
   loadProtocolClass.mockReset()
   getInstalledVersion.mockReset()
-  getConfig.mockReturnValue(undefined)
+  withConfig({})
   getInstalledVersion.mockImplementation((m) => (m === MOONPAY_MODULE ? '1.0.0' : null))
   captured = undefined
 })
 
-/** Mocks config reads so only the listed keys answer. */
+/** Mocks config reads so only the listed keys answer, over a configured environment. */
 function withConfig (values) {
-  getConfig.mockImplementation((key) => (Object.hasOwn(values, key) ? values[key] : undefined))
+  const merged = { ...CONFIGURED, ...values }
+  getConfig.mockImplementation((key) => (Object.hasOwn(merged, key) ? merged[key] : undefined))
 }
 
 /** Makes the module loader return a class that records its construction. */
@@ -79,19 +87,19 @@ const EMPTY_LISTINGS = {
 
 describe('provider availability', () => {
   it('uses the only provider whose module is installed', () => {
-    expect(resolveRampProvider().name).toBe('moonpay')
+    expect(resolveFiatProvider()).toBe('moonpay')
   })
 
   it('reports none available when the module is missing', () => {
     getInstalledVersion.mockReturnValue(null)
 
-    expect(() => resolveRampProvider()).toThrow('No fiat provider is available.')
+    expect(() => resolveFiatProvider()).toThrow('No fiat provider is available.')
   })
 
   it('reports none available when every shipped provider is disabled', () => {
     withConfig({ overrides: { providers: { moonpay: { enabled: false } } } })
 
-    expect(() => resolveRampProvider()).toThrow(
+    expect(() => resolveFiatProvider()).toThrow(
       expect.objectContaining({
         message: 'No fiat provider is available.',
         code: 'MISSING_CONFIG'
@@ -100,13 +108,13 @@ describe('provider availability', () => {
   })
 })
 
-describe('resolveRampProvider', () => {
+describe('resolveFiatProvider', () => {
   it('returns the named provider', () => {
-    expect(resolveRampProvider('moonpay').name).toBe('moonpay')
+    expect(resolveFiatProvider('moonpay')).toBe('moonpay')
   })
 
   it('refuses a provider of another kind', () => {
-    expect(() => resolveRampProvider('velora')).toThrow(
+    expect(() => resolveFiatProvider('velora')).toThrow(
       expect.objectContaining({
         message: "Provider 'velora' is not a fiat on/off-ramp.",
         code: 'INVALID_ARGUMENT'
@@ -117,7 +125,7 @@ describe('resolveRampProvider', () => {
   it('reports when none is usable', () => {
     getInstalledVersion.mockReturnValue(null)
 
-    expect(() => resolveRampProvider()).toThrow(
+    expect(() => resolveFiatProvider()).toThrow(
       expect.objectContaining({
         message: 'No fiat provider is available.',
         code: 'MISSING_CONFIG'
@@ -128,7 +136,7 @@ describe('resolveRampProvider', () => {
   it('loads the provider module named by the registry', async () => {
     withModule(EMPTY_LISTINGS)
 
-    await resolveRampProvider('moonpay').resolveAssets('sepolia', 'eth', 'usd').catch(() => {})
+    await resolveAssets('moonpay', 'sepolia', 'eth', 'usd').catch(() => {})
 
     expect(loadProtocolClass).toHaveBeenCalledWith(MOONPAY_MODULE)
   })
@@ -141,7 +149,7 @@ describe('token resolution', () => {
       getSupportedFiatCurrencies: async () => [{ code: 'usd', decimals: 2 }]
     })
 
-    const resolved = await resolveRampProvider('moonpay').resolveAssets('tron', 'usdt', 'usd')
+    const resolved = await resolveAssets('moonpay', 'tron', 'usdt', 'usd')
 
     expect(resolved).toEqual({
       cryptoCode: 'usdt_trx', cryptoDecimals: 6, fiatCode: 'usd', fiatDecimals: 2
@@ -154,7 +162,7 @@ describe('token resolution', () => {
       getSupportedFiatCurrencies: async () => [{ code: 'USD', decimals: 2 }]
     })
 
-    const resolved = await resolveRampProvider('moonpay').resolveAssets('tron', 'usdt', 'usd')
+    const resolved = await resolveAssets('moonpay', 'tron', 'usdt', 'usd')
 
     expect(resolved).toEqual({
       cryptoCode: 'usdt_trx', cryptoDecimals: 6, fiatCode: 'USD', fiatDecimals: 2
@@ -165,7 +173,7 @@ describe('token resolution', () => {
     withModule(EMPTY_LISTINGS)
 
     await expect(
-      resolveRampProvider('moonpay').resolveAssets('avalanche', 'usdt', 'usd')
+      resolveAssets('moonpay', 'avalanche', 'usdt', 'usd')
     ).rejects.toThrow(
       expect.objectContaining({
         message: "Token 'usdt' on 'avalanche' has no moonpay mapping.",
@@ -178,7 +186,7 @@ describe('token resolution', () => {
     withModule(EMPTY_LISTINGS)
 
     await expect(
-      resolveRampProvider('moonpay').resolveAssets('ethereum', 'nope', 'usd')
+      resolveAssets('moonpay', 'ethereum', 'nope', 'usd')
     ).rejects.toThrow("Unknown token 'nope' on 'ethereum'.")
   })
 
@@ -191,7 +199,7 @@ describe('token resolution', () => {
       getSupportedFiatCurrencies: async () => [{ code: 'usd', decimals: 2 }]
     })
 
-    const resolved = await resolveRampProvider('moonpay').resolveAssets('ethereum', 'eth', 'usd')
+    const resolved = await resolveAssets('moonpay', 'ethereum', 'eth', 'usd')
 
     expect(resolved).toEqual({
       cryptoCode: 'eth_override', cryptoDecimals: 18, fiatCode: 'usd', fiatDecimals: 2
@@ -205,7 +213,7 @@ describe('token resolution', () => {
     })
 
     await expect(
-      resolveRampProvider('moonpay').resolveAssets('tron', 'usdt', 'usd')
+      resolveAssets('moonpay', 'tron', 'usdt', 'usd')
     ).rejects.toThrow("Asset 'usdt_trx' is not supported by moonpay.")
   })
 })
@@ -222,7 +230,7 @@ const AMBIGUOUS_LISTING = {
 /** Mocks a slug override for tron/usdt. */
 const withSlug = (slug) => withConfig({
   overrides: { tokens: { 'tron/usdt': { metadata: { slugs: { moonpay: slug } } } } },
-  'providers.moonpay.config': { apiKey: 'k' }
+  'providers.moonpay.config': { environment: 'sandbox', apiKey: 'k' }
 })
 
 describe('picking the listing row', () => {
@@ -230,7 +238,7 @@ describe('picking the listing row', () => {
     withSlug({ slug: 'usdt_trx', network: 'tron' })
     withModule(AMBIGUOUS_LISTING)
 
-    const resolved = await resolveRampProvider('moonpay').resolveAssets('tron', 'usdt', 'usd')
+    const resolved = await resolveAssets('moonpay', 'tron', 'usdt', 'usd')
 
     expect(resolved.cryptoDecimals).toBe(6)
   })
@@ -240,7 +248,7 @@ describe('picking the listing row', () => {
     withModule(AMBIGUOUS_LISTING)
 
     await expect(
-      resolveRampProvider('moonpay').resolveAssets('tron', 'usdt', 'usd')
+      resolveAssets('moonpay', 'tron', 'usdt', 'usd')
     ).rejects.toThrow(
       expect.objectContaining({
         message: "moonpay lists 'usdt_trx' on 2 networks, so the mapping must name one.",
@@ -254,7 +262,7 @@ describe('picking the listing row', () => {
     withModule(AMBIGUOUS_LISTING)
 
     await expect(
-      resolveRampProvider('moonpay').resolveAssets('tron', 'usdt', 'usd')
+      resolveAssets('moonpay', 'tron', 'usdt', 'usd')
     ).rejects.toThrow("moonpay does not list 'usdt_trx' on network 'polygon'.")
   })
 })
@@ -276,7 +284,7 @@ describe('quote and buildUrl', () => {
     const quoteBuy = jest.fn().mockResolvedValue(DUMMY_QUOTE)
     withModule({ ...EMPTY_LISTINGS, quoteBuy })
 
-    const quote = await resolveRampProvider('moonpay').quote(INPUT, 'buy')
+    const quote = await quoteFiat('moonpay', INPUT, 'buy')
 
     expect(quoteBuy).toHaveBeenCalledWith({
       cryptoAsset: 'usdt_trx', fiatCurrency: 'USD', fiatAmount: 10000n
@@ -288,7 +296,7 @@ describe('quote and buildUrl', () => {
     const quoteSell = jest.fn().mockResolvedValue(DUMMY_QUOTE)
     withModule({ ...EMPTY_LISTINGS, quoteSell })
 
-    await resolveRampProvider('moonpay').quote({ ...INPUT, fiatAmount: undefined, cryptoAmount: 50n }, 'sell')
+    await quoteFiat('moonpay', { ...INPUT, fiatAmount: undefined, cryptoAmount: 50n }, 'sell')
 
     expect(quoteSell).toHaveBeenCalledWith({
       cryptoAsset: 'usdt_trx', fiatCurrency: 'USD', cryptoAmount: 50n
@@ -298,14 +306,14 @@ describe('quote and buildUrl', () => {
   it('reports no quote rather than failing when the provider cannot price it', async () => {
     withModule({ ...EMPTY_LISTINGS, quoteBuy: async () => { throw new Error('no liquidity') } })
 
-    await expect(resolveRampProvider('moonpay').quote(INPUT, 'buy')).resolves.toBeUndefined()
+    await expect(quoteFiat('moonpay', INPUT, 'buy')).resolves.toBeUndefined()
   })
 
   it('names the wallet as recipient on a buy', async () => {
     const buy = jest.fn().mockResolvedValue({ buyUrl: 'https://buy' })
     withModule({ ...EMPTY_LISTINGS, buy })
 
-    const { url } = await resolveRampProvider('moonpay').buildUrl(INPUT, 'buy')
+    const { url } = await buildFiatUrl('moonpay', INPUT, 'buy')
 
     expect(buy).toHaveBeenCalledWith({
       cryptoAsset: 'usdt_trx', fiatCurrency: 'USD', fiatAmount: 10000n, recipient: 'TWallet1'
@@ -317,7 +325,7 @@ describe('quote and buildUrl', () => {
     const sell = jest.fn().mockResolvedValue({ sellUrl: 'https://sell' })
     withModule({ ...EMPTY_LISTINGS, sell })
 
-    const { url } = await resolveRampProvider('moonpay').buildUrl(
+    const { url } = await buildFiatUrl('moonpay', 
       { ...INPUT, fiatAmount: undefined, cryptoAmount: 50n }, 'sell'
     )
 
@@ -332,70 +340,60 @@ describe('quote and buildUrl', () => {
     const buy = jest.fn().mockResolvedValue({ buyUrl: 'https://buy' })
     withModule({ ...EMPTY_LISTINGS, buy })
 
-    await resolveRampProvider('moonpay').buildUrl(INPUT, 'buy')
+    await buildFiatUrl('moonpay', INPUT, 'buy')
 
     expect(buy).toHaveBeenCalledWith(expect.objectContaining({ config: { network: 'tron' } }))
   })
 })
 
-describe('MoonPayRampProvider', () => {
-  it('wraps a configured signUrl into a callback', async () => {
-    withModule(EMPTY_LISTINGS)
-    withConfig({ 'providers.moonpay.config': { apiKey: 'k', signUrl: 'https://sign.example/sign' } })
+describe('module config', () => {
+  it('wraps a configured callback key into a function', () => {
+    withConfig({ 'providers.moonpay.config': { apiKey: 'k', environment: 'sandbox', signUrl: 'https://sign.example/sign' } })
 
-    await resolveRampProvider('moonpay').resolveAssets('ethereum', 'eth', 'usd').catch(() => {})
+    const config = buildModuleConfig('moonpay', 'ethereum')
 
-    expect(captured.account).toBeUndefined()
-    expect(captured.config).toEqual({ apiKey: 'k', environment: '', signUrl: expect.any(Function) })
+    expect(config).toEqual({ apiKey: 'k', environment: 'sandbox', signUrl: expect.any(Function) })
   })
 
-  it('drops signUrl when it is unset, so the module sees it as absent', async () => {
-    withModule(EMPTY_LISTINGS)
-    withConfig({ 'providers.moonpay.config': { apiKey: 'k' } })
+  it('drops a callback key with no endpoint, so the module sees it as absent', () => {
+    withConfig({ 'providers.moonpay.config': { apiKey: 'k', environment: 'sandbox' } })
 
-    await resolveRampProvider('moonpay').resolveAssets('ethereum', 'eth', 'usd').catch(() => {})
+    const config = buildModuleConfig('moonpay', 'ethereum')
 
-    expect(captured.config).toEqual({ apiKey: 'k', environment: '' })
+    expect(config).toEqual({ apiKey: 'k', environment: 'sandbox' })
   })
 
-  it.each([
-    ['sandbox', 'sepolia'],
-    ['production', 'ethereum']
-  ])('accepts %s on %s', async (environment, network) => {
-    withConfig({ 'providers.moonpay.config': { environment } })
+  it('passes non-callback values through untouched', () => {
+    withConfig({ 'providers.moonpay.config': { apiKey: 'k', environment: 'sandbox', cacheTime: 1000 } })
 
-    await expect(resolveRampProvider('moonpay').validateEnvironment(network)).resolves.toBeUndefined()
+    const config = buildModuleConfig('moonpay', 'ethereum')
+
+    expect(config.cacheTime).toBe(1000)
+    expect(config.apiKey).toBe('k')
   })
 
-  it.each([
-    ['production', 'sepolia', 'testnet'],
-    ['sandbox', 'ethereum', 'mainnet']
-  ])('refuses %s on %s', async (environment, network, label) => {
-    withConfig({ 'providers.moonpay.config': { environment } })
+  it('wraps every callback key a provider entry declares, including a user-added one', () => {
+    withConfig({
+      'providers.transak.config': { apiKey: 'k', environment: 'STAGING', widgetUrl: 'https://w.test', getOrder: 'https://o.test' },
+      customProviders: {
+        transak: {
+          kind: 'fiat',
+          module: '@transak/wdk-protocol-fiat-transak',
+          endpointKeys: ['widgetUrl', 'getOrder']
+        }
+      }
+    })
 
-    await expect(resolveRampProvider('moonpay').validateEnvironment(network)).rejects.toThrow(
-      `Cannot use moonpay environment '${environment}' with ${label} '${network}'.`
-    )
+    const config = buildModuleConfig('transak', 'ethereum')
+
+    expect(config.widgetUrl).toEqual(expect.any(Function))
+    expect(config.getOrder).toEqual(expect.any(Function))
   })
 
-  it('reports an unconfigured environment', async () => {
-    await expect(resolveRampProvider('moonpay').validateEnvironment('ethereum')).rejects.toThrow(
-      expect.objectContaining({
-        message: 'MoonPay environment is not configured.',
-        code: 'MISSING_CONFIG'
-      })
-    )
-  })
+  it('passes the environment through without judging it against the network', () => {
+    withConfig({ 'providers.moonpay.config': { apiKey: 'k', environment: 'production' } })
 
-  it('rejects an environment that is neither production nor sandbox', async () => {
-    withConfig({ 'providers.moonpay.config': { environment: 'staging' } })
-
-    await expect(resolveRampProvider('moonpay').validateEnvironment('ethereum')).rejects.toThrow(
-      expect.objectContaining({
-        message: "Invalid MoonPay environment 'staging'. Must be 'production' or 'sandbox'.",
-        code: 'INVALID_CONFIG'
-      })
-    )
+    expect(buildModuleConfig('moonpay', 'sepolia').environment).toBe('production')
   })
 })
 
@@ -423,8 +421,8 @@ describe('endpoint callbacks', () => {
   /** Constructs MoonPay with a signUrl and hands back the wrapped callback. */
   async function signCallback () {
     withModule(EMPTY_LISTINGS)
-    withConfig({ 'providers.moonpay.config': { apiKey: 'pk_test_X', signUrl: SIGN_URL } })
-    await resolveRampProvider('moonpay').resolveAssets('ethereum', 'eth', 'usd').catch(() => {})
+    withConfig({ 'providers.moonpay.config': { environment: 'sandbox', apiKey: 'pk_test_X', signUrl: SIGN_URL } })
+    await resolveAssets('moonpay', 'ethereum', 'eth', 'usd').catch(() => {})
     return captured.config.signUrl
   }
 
@@ -462,10 +460,10 @@ describe('endpoint callbacks', () => {
     await expect(sign(UNSIGNED)).rejects.toThrow(`Endpoint '${SIGN_URL}' failed: 500 Server Error`)
   })
 
-  it('reports an answer carrying no signed URL', async () => {
-    globalThis.fetch = async () => ({ ok: true, json: async () => ({ nope: 1 }) })
+  it('hands back an answer carrying no URL field as-is, for callbacks that want an object', async () => {
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ orderId: 'o-1', status: 'COMPLETED' }) })
     const sign = await signCallback()
 
-    await expect(sign(UNSIGNED)).rejects.toThrow(`Endpoint '${SIGN_URL}' returned no string answer.`)
+    await expect(sign(UNSIGNED)).resolves.toEqual({ orderId: 'o-1', status: 'COMPLETED' })
   })
 })

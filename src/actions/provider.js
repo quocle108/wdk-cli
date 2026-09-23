@@ -28,7 +28,7 @@ import {
   removeCustomProvider
 } from '../services/protocol-service.js'
 import { isRegisteredModule } from '../services/module-service.js'
-import { FIAT } from '../services/ramp/index.js'
+import { FIAT } from '../services/fiat-service.js'
 import { hasOwn } from '../services/override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 

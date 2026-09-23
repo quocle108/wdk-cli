@@ -67,6 +67,8 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
  *   (e.g. API keys); shallow-merged under any per-network override in `networks.<n>.providers.<name>`.
  * @property {Record<string, Record<string, unknown>>} [networks] - Per-network config overrides keyed by
  *   network name. Used by user-added providers, which cannot edit the packaged network entries.
+ * @property {string[]} [endpointKeys] - Config keys the module takes as a callback rather than a
+ *   value. The CLI stores a URL for each and POSTs to it when the module calls back.
  */
 
 /**

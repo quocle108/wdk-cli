@@ -15,7 +15,7 @@
 import { daemonClient } from '../daemon/client.js'
 import { validateNetwork } from '../config/networks.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
-import { resolveRampProvider } from '../services/ramp/index.js'
+import { resolveFiatProvider, resolveAssets, quoteFiat, buildFiatUrl } from '../services/fiat-service.js'
 import { formatAmount } from '../ui/formatters.js'
 import { humanToBaseUnits } from '../ui/parsers.js'
 
@@ -55,7 +55,6 @@ import { humanToBaseUnits } from '../ui/parsers.js'
  * @returns {Promise<RampResult>} The ramp result including the provider URL.
  * @throws {WdkCliError} INVALID_ARGUMENT when both or neither of the amounts are given.
  * @throws {WdkCliError} TOKEN_NOT_SUPPORTED when the token has no mapping for the provider.
- * @throws {WdkCliError} ENVIRONMENT_MISMATCH when the provider's environment disagrees with the network.
  */
 export async function createRampUrl (input) {
   if (input.fiatAmount && input.cryptoAmount) {
@@ -74,14 +73,12 @@ export async function createRampUrl (input) {
   const wallet = await daemonClient.requireUnlocked(input.wallet)
   validateNetwork(input.network)
 
-  const provider = resolveRampProvider(input.provider)
+  const provider = resolveFiatProvider(input.provider)
   const token = input.token.toLowerCase()
   const fiatCurrency = input.fiatCurrency ?? 'usd'
 
-  await provider.validateEnvironment(input.network)
-
   const address = await daemonClient.getAddress(input.network, input.index, wallet)
-  const assets = await provider.resolveAssets(input.network, token, fiatCurrency)
+  const assets = await resolveAssets(provider, input.network, token, fiatCurrency)
 
   const rampInput = {
     network: input.network,
@@ -99,8 +96,8 @@ export async function createRampUrl (input) {
     cryptoDecimals: assets.cryptoDecimals
   }
 
-  const quote = await provider.quote(rampInput, input.direction)
-  const { url } = await provider.buildUrl(rampInput, input.direction)
+  const quote = await quoteFiat(provider, rampInput, input.direction)
+  const { url } = await buildFiatUrl(provider, rampInput, input.direction)
 
   const isBuy = input.direction === 'buy'
   const fiat = (value) => formatAmount(value, assets.fiatDecimals, fiatCurrency.toUpperCase())
@@ -122,7 +119,7 @@ export async function createRampUrl (input) {
     network: input.network,
     address,
     token,
-    provider: provider.name,
+    provider,
     fiatCurrency,
     payAmount,
     receiveAmount,

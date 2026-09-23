@@ -56,7 +56,8 @@
     "moonpay": {
       "kind": "fiat",
       "module": "@tetherto/wdk-protocol-fiat-moonpay",
-      "config": { "apiKey": "", "signUrl": "", "environment": "" }
+      "config": { "apiKey": "", "signUrl": "", "environment": "" },
+      "endpointKeys": ["signUrl"]
     },
     "velora": {
       "kind": "swap",
