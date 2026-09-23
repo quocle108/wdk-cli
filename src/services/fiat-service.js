@@ -144,8 +144,15 @@ export async function postToEndpoint (endpoint, payload) {
     )
   }
   if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    let reason = body
+    try {
+      const parsed = JSON.parse(body)
+      reason = parsed?.error ?? parsed?.message ?? body
+    } catch {}
     throw new WdkCliError(
-      `Endpoint '${endpoint}' failed: ${response.status} ${response.statusText}`,
+      `Endpoint '${endpoint}' failed: ${response.status} ${response.statusText}` +
+        (reason ? ` — ${reason}` : ''),
       ErrorCode.SIGN_FAILED
     )
   }

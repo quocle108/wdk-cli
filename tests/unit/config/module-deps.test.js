@@ -30,6 +30,7 @@ describe('module dependency sync', () => {
       '@tetherto/wdk-wallet-spark',
       '@tetherto/wdk-wallet-tron',
       '@tetherto/wdk-protocol-fiat-moonpay',
+      '@transak/wdk-protocol-fiat-transak',
       '@tetherto/wdk-protocol-swap-velora-evm',
       '@tetherto/wdk-protocol-bridge-usdt0-evm',
       '@rhino.fi/wdk-protocol-swidge-rhinofi',

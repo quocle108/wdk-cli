@@ -457,10 +457,33 @@ describe('endpoint callbacks', () => {
   })
 
   it('reports a non-OK answer', async () => {
-    globalThis.fetch = async () => ({ ok: false, status: 500, statusText: 'Server Error', json: async () => ({}) })
+    globalThis.fetch = async () => ({ ok: false, status: 500, statusText: 'Server Error', text: async () => '' })
     const sign = await signCallback()
 
     await expect(sign(UNSIGNED)).rejects.toThrow(`Endpoint '${SIGN_URL}' failed: 500 Server Error`)
+  })
+
+  it('carries the reason the endpoint gave, rather than only its status', async () => {
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 502,
+      statusText: 'Bad Gateway',
+      text: async () => JSON.stringify({ error: 'API key is not active. Please complete the KYC.' })
+    })
+    const sign = await signCallback()
+
+    await expect(sign(UNSIGNED)).rejects.toThrow(
+      `Endpoint '${SIGN_URL}' failed: 502 Bad Gateway — API key is not active. Please complete the KYC.`
+    )
+  })
+
+  it('falls back to the raw body when it is not JSON', async () => {
+    globalThis.fetch = async () => ({ ok: false, status: 500, statusText: 'Server Error', text: async () => 'upstream down' })
+    const sign = await signCallback()
+
+    await expect(sign(UNSIGNED)).rejects.toThrow(
+      `Endpoint '${SIGN_URL}' failed: 500 Server Error — upstream down`
+    )
   })
 
   it('hands back an answer carrying no URL field as-is, for callbacks that want an object', async () => {
