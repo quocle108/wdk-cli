@@ -33,7 +33,7 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
 /** The registry kind a USD price feed declares. */
 const PRICING_KIND = /** @type {ProtocolKind} */ ('pricing')
 
-export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat', 'pricing'])
+export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat', 'pricing', 'indexer'])
 
 /** The kinds `wdk provider add` can register. */
 export const ADDABLE_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat', 'pricing'])
@@ -48,7 +48,8 @@ const KIND_METHODS = {
   bridge: ['quoteBridge', 'bridge'],
   swidge: ['quoteSwidge', 'swidge'],
   fiat: ['quoteBuy', 'buy', 'quoteSell', 'sell'],
-  pricing: ['getCurrentPrice', 'getMultiPriceData']
+  pricing: ['getCurrentPrice', 'getMultiPriceData'],
+  indexer: []
 }
 
 /**
@@ -269,10 +270,19 @@ export function resolveProtocolConfig (name, network, options = {}) {
  * @param {ProtocolKind} kind - The kind the registry declares for the provider.
  * @param {ProtocolClass} ProtocolClass - The class imported from the provider's module.
  * @returns {void}
+ * @throws {WdkCliError} INVALID_ARGUMENT when the kind has no interface to check against.
  * @throws {WdkCliError} INVALID_ARGUMENT when the class is missing a method the kind requires.
  */
 export function assertImplementsKind (name, kind, ProtocolClass) {
-  const missing = KIND_METHODS[kind].filter(
+  const required = KIND_METHODS[kind]
+  if (required.length === 0) {
+    throw new WdkCliError(
+      `Providers of kind '${kind}' cannot be verified against a module.`,
+      ErrorCode.INVALID_ARGUMENT,
+      `The CLI calls a ${kind} provider's API directly, so there is no interface to check.`
+    )
+  }
+  const missing = required.filter(
     (method) => typeof ProtocolClass?.prototype?.[method] !== 'function'
   )
   if (missing.length === 0) return
