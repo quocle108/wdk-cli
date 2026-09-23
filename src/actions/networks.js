@@ -17,7 +17,7 @@ import {
   getAllNetworksIncludingDisabled,
   isTestnet,
   isBuiltinNetwork,
-  isValidNetwork,
+  isCustomNetwork,
   getValidWalletTypes
 } from '../config/networks.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
@@ -158,7 +158,7 @@ export function validateNetworkSpec (data) {
       ErrorCode.INVALID_ARGUMENT
     )
   }
-  if (isValidNetwork(network) || isBuiltinNetwork(network)) {
+  if (isBuiltinNetwork(network) || isCustomNetwork(network)) {
     throw new WdkCliError(`Network '${network}' already exists.`, ErrorCode.WALLET_EXISTS)
   }
 

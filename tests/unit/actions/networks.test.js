@@ -126,6 +126,28 @@ describe('validateNetworkSpec name collisions', () => {
     )
   })
 
+  it('rejects the name of a custom network the user disabled', () => {
+    withConfig({
+      customNetworks: { mychain: { name: 'mychain', module: '@tetherto/wdk-wallet-evm' } },
+      overrides: { networks: { mychain: { enabled: false } } }
+    })
+
+    expect(() => validateNetworkSpec({ network: 'mychain', module: '@tetherto/wdk-wallet-evm' })).toThrow(
+      expect.objectContaining({ message: "Network 'mychain' already exists.", code: 'WALLET_EXISTS' })
+    )
+  })
+
+  it('rejects the name of a custom network hidden by its disabled module', () => {
+    withConfig({
+      customNetworks: { mychain: { name: 'mychain', module: '@tetherto/wdk-wallet-evm' } },
+      overrides: { modules: { '@tetherto/wdk-wallet-evm': { enabled: false } } }
+    })
+
+    expect(() => validateNetworkSpec({ network: 'mychain', module: '@tetherto/wdk-wallet-evm' })).toThrow(
+      expect.objectContaining({ message: "Network 'mychain' already exists.", code: 'WALLET_EXISTS' })
+    )
+  })
+
   it('accepts a name no network uses', () => {
     withConfig({})
 
