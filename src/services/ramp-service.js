@@ -193,7 +193,7 @@ export function buildModuleConfig (name, network) {
  * @returns {Promise<FiatProtocol>} The constructed protocol.
  * @throws {WdkCliError} UNSUPPORTED_MODULE when the module is not registered or not installed.
  */
-export async function getFiatProtocol (name, network) {
+export async function getRampProtocol (name, network) {
   const key = `${name}/${network}`
   const ProtocolClass = /** @type {FiatProtocolConstructor} */ (
     /** @type {unknown} */ (await loadProtocolClass(getProtocol(name).module))
@@ -212,7 +212,7 @@ export async function getFiatProtocol (name, network) {
  *
  * @returns {string[]} Provider short names, in packaged order.
  */
-function getFiatProviders () {
+function getRampProviders () {
   return Object.entries(getProtocols())
     .filter(([, entry]) => entry.kind === FIAT && getInstalledVersion(entry.module) !== null)
     .map(([name]) => name)
@@ -229,7 +229,7 @@ function getFiatProviders () {
  * @throws {WdkCliError} MISSING_CONFIG when no fiat provider is usable.
  * @throws {WdkCliError} INVALID_ARGUMENT when several are usable and none was named.
  */
-export function resolveFiatProvider (requested) {
+export function resolveRampProvider (requested) {
   if (requested) {
     const entry = getProtocol(requested)
     if (entry.kind !== FIAT) {
@@ -249,7 +249,7 @@ export function resolveFiatProvider (requested) {
     return requested
   }
 
-  const usable = getFiatProviders()
+  const usable = getRampProviders()
   if (usable.length === 0) {
     throw new WdkCliError(
       'No fiat provider is available.',
@@ -366,7 +366,7 @@ function pickAsset (provider, assets, code, extras, network, token) {
  * @throws {WdkCliError} INVALID_ARGUMENT when the provider does not carry the currency.
  */
 export async function resolveAssets (provider, network, token, fiatCurrency) {
-  const protocol = await getFiatProtocol(provider, network)
+  const protocol = await getRampProtocol(provider, network)
   const { code, extras } = slugFor(provider, network, token)
   const [cryptos, fiats] = await Promise.all([
     protocol.getSupportedCryptoAssets(),
@@ -399,7 +399,7 @@ export async function resolveAssets (provider, network, token, fiatCurrency) {
  * @returns {Record<string, unknown>} The options common to every quote and URL call.
  * @throws {WdkCliError} TOKEN_NOT_SUPPORTED when the token has no mapping for this provider.
  */
-function buildFiatOptions (provider, input) {
+function buildRampOptions (provider, input) {
   const { code, extras } = slugFor(provider, input.network, input.token)
   const amount = input.fiatAmount !== undefined
     ? { fiatAmount: input.fiatAmount }
@@ -429,9 +429,9 @@ function buildFiatOptions (provider, input) {
  * @returns {Promise<QuoteAttempt>} The quote, or the reason there is none.
  * @throws {WdkCliError} INVALID_CONFIG when the provider rejected the credentials.
  */
-export async function quoteFiat (provider, input, direction) {
-  const protocol = await getFiatProtocol(provider, input.network)
-  const options = buildFiatOptions(provider, input)
+export async function quoteRamp (provider, input, direction) {
+  const protocol = await getRampProtocol(provider, input.network)
+  const options = buildRampOptions(provider, input)
   try {
     const quote = direction === 'buy'
       ? await protocol.quoteBuy(options)
@@ -460,9 +460,9 @@ export async function quoteFiat (provider, input, direction) {
  * @returns {Promise<UrlResult>} The widget URL.
  * @throws {WdkCliError} SIGN_FAILED when the configured signing endpoint fails.
  */
-export async function buildFiatUrl (provider, input, direction) {
-  const protocol = await getFiatProtocol(provider, input.network)
-  const options = buildFiatOptions(provider, input)
+export async function buildRampUrl (provider, input, direction) {
+  const protocol = await getRampProtocol(provider, input.network)
+  const options = buildRampOptions(provider, input)
   if (direction === 'buy') {
     const { buyUrl } = await protocol.buy({ ...options, recipient: input.walletAddress })
     return { url: buyUrl }

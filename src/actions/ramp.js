@@ -15,7 +15,7 @@
 import { daemonClient } from '../daemon/client.js'
 import { validateNetwork } from '../config/networks.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
-import { resolveFiatProvider, resolveAssets, quoteFiat, buildFiatUrl } from '../services/fiat-service.js'
+import { resolveRampProvider, resolveAssets, quoteRamp, buildRampUrl } from '../services/ramp-service.js'
 import { formatAmount } from '../ui/formatters.js'
 import { humanToBaseUnits } from '../ui/parsers.js'
 
@@ -75,7 +75,7 @@ export async function createRampUrl (input) {
   const wallet = await daemonClient.requireUnlocked(input.wallet)
   validateNetwork(input.network)
 
-  const provider = resolveFiatProvider(input.provider)
+  const provider = resolveRampProvider(input.provider)
   const token = input.token.toLowerCase()
   const fiatCurrency = input.fiatCurrency ?? 'usd'
 
@@ -98,8 +98,8 @@ export async function createRampUrl (input) {
     cryptoDecimals: assets.cryptoDecimals
   }
 
-  const { quote, reason } = await quoteFiat(provider, rampInput, input.direction)
-  const { url } = await buildFiatUrl(provider, rampInput, input.direction)
+  const { quote, reason } = await quoteRamp(provider, rampInput, input.direction)
+  const { url } = await buildRampUrl(provider, rampInput, input.direction)
 
   const isBuy = input.direction === 'buy'
   const fiat = (value) => formatAmount(value, assets.fiatDecimals, fiatCurrency.toUpperCase())

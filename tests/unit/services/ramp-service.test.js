@@ -37,8 +37,8 @@ jest.unstable_mockModule('../../../src/services/module-service.js', () => ({
   getInstalledVersion
 }))
 
-const { resolveFiatProvider, resolveAssets, quoteFiat, buildFiatUrl, buildModuleConfig } =
-  await import('../../../src/services/fiat-service.js')
+const { resolveRampProvider, resolveAssets, quoteRamp, buildRampUrl, buildModuleConfig } =
+  await import('../../../src/services/ramp-service.js')
 
 const require = createRequire(import.meta.url)
 const catalog = require('../../../wdk.config.json')
@@ -87,19 +87,19 @@ const EMPTY_LISTINGS = {
 
 describe('provider availability', () => {
   it('uses the only provider whose module is installed', () => {
-    expect(resolveFiatProvider()).toBe('moonpay')
+    expect(resolveRampProvider()).toBe('moonpay')
   })
 
   it('reports none available when the module is missing', () => {
     getInstalledVersion.mockReturnValue(null)
 
-    expect(() => resolveFiatProvider()).toThrow('No fiat provider is available.')
+    expect(() => resolveRampProvider()).toThrow('No fiat provider is available.')
   })
 
   it('reports none available when every shipped provider is disabled', () => {
     withConfig({ overrides: { providers: { moonpay: { enabled: false } } } })
 
-    expect(() => resolveFiatProvider()).toThrow(
+    expect(() => resolveRampProvider()).toThrow(
       expect.objectContaining({
         message: 'No fiat provider is available.',
         code: 'MISSING_CONFIG'
@@ -108,13 +108,13 @@ describe('provider availability', () => {
   })
 })
 
-describe('resolveFiatProvider', () => {
+describe('resolveRampProvider', () => {
   it('returns the named provider', () => {
-    expect(resolveFiatProvider('moonpay')).toBe('moonpay')
+    expect(resolveRampProvider('moonpay')).toBe('moonpay')
   })
 
   it('refuses a provider of another kind', () => {
-    expect(() => resolveFiatProvider('velora')).toThrow(
+    expect(() => resolveRampProvider('velora')).toThrow(
       expect.objectContaining({
         message: "Provider 'velora' is not a fiat on/off-ramp.",
         code: 'INVALID_ARGUMENT'
@@ -125,7 +125,7 @@ describe('resolveFiatProvider', () => {
   it('reports when none is usable', () => {
     getInstalledVersion.mockReturnValue(null)
 
-    expect(() => resolveFiatProvider()).toThrow(
+    expect(() => resolveRampProvider()).toThrow(
       expect.objectContaining({
         message: 'No fiat provider is available.',
         code: 'MISSING_CONFIG'
@@ -284,7 +284,7 @@ describe('quote and buildUrl', () => {
     const quoteBuy = jest.fn().mockResolvedValue(DUMMY_QUOTE)
     withModule({ ...EMPTY_LISTINGS, quoteBuy })
 
-    const { quote } = await quoteFiat('moonpay', INPUT, 'buy')
+    const { quote } = await quoteRamp('moonpay', INPUT, 'buy')
 
     expect(quoteBuy).toHaveBeenCalledWith({
       cryptoAsset: 'usdt_trx', fiatCurrency: 'USD', fiatAmount: 10000n
@@ -296,7 +296,7 @@ describe('quote and buildUrl', () => {
     const quoteSell = jest.fn().mockResolvedValue(DUMMY_QUOTE)
     withModule({ ...EMPTY_LISTINGS, quoteSell })
 
-    await quoteFiat('moonpay', { ...INPUT, fiatAmount: undefined, cryptoAmount: 50n }, 'sell')
+    await quoteRamp('moonpay', { ...INPUT, fiatAmount: undefined, cryptoAmount: 50n }, 'sell')
 
     expect(quoteSell).toHaveBeenCalledWith({
       cryptoAsset: 'usdt_trx', fiatCurrency: 'USD', cryptoAmount: 50n
@@ -306,7 +306,7 @@ describe('quote and buildUrl', () => {
   it('reports why the provider could not price it, rather than failing', async () => {
     withModule({ ...EMPTY_LISTINGS, quoteBuy: async () => { throw new Error('no liquidity') } })
 
-    const { quote, reason } = await quoteFiat('moonpay', INPUT, 'buy')
+    const { quote, reason } = await quoteRamp('moonpay', INPUT, 'buy')
 
     expect(quote).toBeUndefined()
     expect(reason).toBe('no liquidity')
@@ -316,7 +316,7 @@ describe('quote and buildUrl', () => {
     const buy = jest.fn().mockResolvedValue({ buyUrl: 'https://buy' })
     withModule({ ...EMPTY_LISTINGS, buy })
 
-    const { url } = await buildFiatUrl('moonpay', INPUT, 'buy')
+    const { url } = await buildRampUrl('moonpay', INPUT, 'buy')
 
     expect(buy).toHaveBeenCalledWith({
       cryptoAsset: 'usdt_trx', fiatCurrency: 'USD', fiatAmount: 10000n, recipient: 'TWallet1'
@@ -328,7 +328,7 @@ describe('quote and buildUrl', () => {
     const sell = jest.fn().mockResolvedValue({ sellUrl: 'https://sell' })
     withModule({ ...EMPTY_LISTINGS, sell })
 
-    const { url } = await buildFiatUrl('moonpay', 
+    const { url } = await buildRampUrl('moonpay', 
       { ...INPUT, fiatAmount: undefined, cryptoAmount: 50n }, 'sell'
     )
 
@@ -343,7 +343,7 @@ describe('quote and buildUrl', () => {
     const buy = jest.fn().mockResolvedValue({ buyUrl: 'https://buy' })
     withModule({ ...EMPTY_LISTINGS, buy })
 
-    await buildFiatUrl('moonpay', INPUT, 'buy')
+    await buildRampUrl('moonpay', INPUT, 'buy')
 
     expect(buy).toHaveBeenCalledWith(expect.objectContaining({ config: { network: 'tron' } }))
   })
