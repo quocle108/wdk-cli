@@ -141,7 +141,9 @@ function normalizeMetadata (metadata) {
 /**
  * Applies the user's `overrides.tokens.<id>.metadata.slugs` deltas to an asset.
  * Each system is merged individually, so adding a mapping for one provider
- * leaves the packaged mappings for the others in place.
+ * leaves the packaged mappings for the others in place. These deltas are
+ * written with `wdk config set`, which does not validate them, so an entry
+ * carrying no slug is dropped rather than shadowing the packaged mapping.
  *
  * @param {CliTokenAsset} asset - The asset as the catalog or user config defines it.
  * @returns {CliTokenAsset} The asset with any slug deltas applied.
@@ -149,9 +151,13 @@ function normalizeMetadata (metadata) {
 function withSlugOverrides (asset) {
   const slugs = getOwn(getOverrides().tokens, asset.id)?.metadata?.slugs
   if (!slugs || typeof slugs !== 'object') return asset
+  const usable = Object.fromEntries(
+    Object.entries(slugs).filter(([, entry]) => slugValue(entry) !== undefined)
+  )
+  if (Object.keys(usable).length === 0) return asset
   return {
     ...asset,
-    metadata: { ...asset.metadata, slugs: { ...asset.metadata?.slugs, ...slugs } }
+    metadata: { ...asset.metadata, slugs: { ...asset.metadata?.slugs, ...usable } }
   }
 }
 

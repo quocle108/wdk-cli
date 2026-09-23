@@ -426,7 +426,7 @@ export async function quoteFiat (provider, input, direction) {
   } catch (error) {
     if (error instanceof WdkCliError) throw error
     const message = error instanceof Error ? error.message : String(error)
-    if (/unauthor|forbidden|api key|invalid key|401|403/i.test(message)) {
+    if (/unauthor|forbidden|api key|invalid key/i.test(message)) {
       throw new WdkCliError(
         `${provider} rejected the request: ${message}`,
         ErrorCode.INVALID_CONFIG,
