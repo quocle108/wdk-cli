@@ -47,11 +47,9 @@ function printTokenEntry (entry, token) {
   console.log(`    Decimals: ${entry.decimals}`)
   console.log(`    Native:   ${entry.isNative ? 'yes' : 'no'}`)
   if (entry.address) console.log(`    Address:  ${entry.address}`)
-  if (entry.metadata) {
-    const metaLine = Object.entries(entry.metadata)
-      .map(([k, v]) => `${k}=${v}`)
-      .join(', ')
-    if (metaLine) console.log(`    Metadata: ${metaLine}`)
+  const slugs = entry.metadata?.slugs
+  if (slugs && Object.keys(slugs).length > 0) {
+    console.log(`    Slugs:    ${formatSlugs(slugs)}`)
   }
 }
 
