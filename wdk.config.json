@@ -51,7 +51,7 @@
     "@symbiosis-finance/wdk-protocol-swidge-symbiosis": { "version": "1.3.0" }
   },
   "providers": {
-    "indexer": {
+    "wdk-indexer": {
       "kind": "indexer",
       "config": { "baseUrl": "https://wdk-api.tether.io", "apiKey": "" }
     },

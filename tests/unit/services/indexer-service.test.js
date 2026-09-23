@@ -17,7 +17,7 @@ import { jest } from '@jest/globals'
 import {
   getIndexerSlug,
   isIndexerSupported,
-  isIndexerEnabled,
+  assertIndexerAvailable,
   getTokenTransfers
 } from '../../../src/services/indexer-service.js'
 import { configService } from '../../../src/services/config-service.js'
@@ -57,43 +57,92 @@ describe('indexer endpoint configuration', () => {
 
   it('refuses to call the API when the indexer provider is disabled', async () => {
     const getMock = jest.spyOn(configService, 'get').mockImplementation((key) =>
-      key === 'overrides' ? { providers: { indexer: { enabled: false } } } : undefined
+      key === 'overrides' ? { providers: { 'wdk-indexer': { enabled: false } } } : undefined
     )
     const fetchMock = jest.spyOn(globalThis, 'fetch')
 
     await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
-      "Protocol 'indexer' is disabled."
+      'No indexer is available.'
     )
 
     expect(getMock).toHaveBeenCalledWith('overrides')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('reports the indexer as disabled before any wallet work', () => {
+  it('rejects before any wallet work when no indexer is enabled', () => {
     jest.spyOn(configService, 'get').mockImplementation((key) =>
-      key === 'overrides' ? { providers: { indexer: { enabled: false } } } : undefined
+      key === 'overrides' ? { providers: { 'wdk-indexer': { enabled: false } } } : undefined
     )
 
-    expect(isIndexerEnabled()).toBe(false)
+    expect(() => assertIndexerAvailable()).toThrow(
+      expect.objectContaining({
+        message: 'No indexer is available.',
+        code: 'MISSING_CONFIG',
+        suggestion: 'Enable one with: wdk provider enable --name wdk-indexer'
+      })
+    )
   })
 
-  it('reports the indexer as enabled by default', () => {
+  it('refuses to guess when two indexers are enabled', () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'customProviders'
+        ? { myindexer: { kind: 'indexer', config: { baseUrl: 'https://dummy-indexer.test' } } }
+        : undefined
+    )
+
+    expect(() => assertIndexerAvailable()).toThrow(
+      expect.objectContaining({
+        message: 'Several indexers are enabled: wdk-indexer, myindexer.',
+        code: 'INVALID_ARGUMENT',
+        suggestion: 'Leave one enabled with: wdk provider disable --name myindexer'
+      })
+    )
+  })
+
+  it('accepts the single packaged indexer', () => {
     jest.spyOn(configService, 'get').mockReturnValue(undefined)
 
-    expect(isIndexerEnabled()).toBe(true)
+    expect(assertIndexerAvailable()).toBeUndefined()
   })
 
-  it('reports a missing base URL against the provider config key', async () => {
+  it('calls the packaged base URL from the registry entry', async () => {
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      /** @type {Response} */ ({ ok: true, json: async () => ({ transfers: [] }) })
+    )
+
+    await getTokenTransfers('ethereum', 'usdt', ADDRESS)
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://wdk-api.tether.io/api/v1/ethereum/usdt/' + ADDRESS + '/token-transfers'
+    )
+  })
+
+  it('reports an unset base URL against the provider config key', async () => {
     jest.spyOn(configService, 'get').mockImplementation((key) =>
-      key === 'providers.indexer.config' ? { baseUrl: '' } : undefined
+      key === 'providers.wdk-indexer.config' ? { baseUrl: '' } : undefined
     )
 
     await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
       expect.objectContaining({
         message: 'Indexer base URL not configured.',
         code: 'MISSING_CONFIG',
-        suggestion: 'Set it with: wdk config set --key providers.indexer.config.baseUrl --value <url>'
+        suggestion: 'Set it with: wdk config set --key providers.wdk-indexer.config.baseUrl --value <url>'
       })
+    )
+  })
+
+  it('uses a configured proxy base URL instead', async () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'providers.wdk-indexer.config' ? { baseUrl: 'https://proxy.dummy-host.test' } : undefined
+    )
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      /** @type {Response} */ ({ ok: true, json: async () => ({ transfers: [] }) })
+    )
+
+    await getTokenTransfers('ethereum', 'usdt', ADDRESS)
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://proxy.dummy-host.test/api/v1/ethereum/usdt/' + ADDRESS + '/token-transfers'
     )
   })
 })

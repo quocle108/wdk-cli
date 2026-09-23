@@ -362,11 +362,11 @@ wdk get transaction --network ethereum --hash <txHash> --finality confirmed     
 
 Wallets are derived deterministically from your seed phrase using HD paths (BIP-84 for BTC, BIP-44 for EVM/Solana) — no local state is stored. `get address` works without a provider configured (local derivation only), while `get balance` requires a provider connection.
 
-`get history` uses the [WDK Indexer API](https://github.com/tetherto/wdk-indexer-http), an entry of the `providers` registry with `kind: indexer` (see [Provider](#provider)). It is configured like any other provider, and `wdk provider disable --name indexer` turns `get history` off:
+`get history` uses the [WDK Indexer API](https://github.com/tetherto/wdk-indexer-http), an entry of the `providers` registry with `kind: indexer` (see [Provider](#provider)). It is configured like any other provider, and `wdk provider disable --name wdk-indexer` turns `get history` off:
 
 ```bash
-wdk config set --key providers.indexer.config.baseUrl --value <url>
-wdk config set --key providers.indexer.config.apiKey --value <key>
+wdk config set --key providers.wdk-indexer.config.baseUrl --value <url>
+wdk config set --key providers.wdk-indexer.config.apiKey --value <key>
 ```
 
 If using a proxy provider that includes the API key, only the base URL is needed.
