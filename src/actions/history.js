@@ -16,7 +16,7 @@ import { daemonClient } from '../daemon/client.js'
 import { validateNetwork } from '../config/networks.js'
 import {
   isIndexerSupported,
-  isIndexerEnabled,
+  assertIndexerAvailable,
   getIndexerSlug,
   getIndexerTokens,
   getTokenTransfers,
@@ -97,13 +97,7 @@ function enrichTransfer (network, t) {
 export async function getHistory (input) {
   const wallet = await daemonClient.requireUnlocked(input.wallet)
   validateNetwork(input.network)
-  if (!isIndexerEnabled()) {
-    throw new WdkCliError(
-      'The indexer provider is disabled.',
-      ErrorCode.INVALID_ARGUMENT,
-      'Enable it with: wdk provider enable --name indexer'
-    )
-  }
+  assertIndexerAvailable()
   if (!isIndexerSupported(input.network)) {
     throw new WdkCliError(
       `Network '${input.network}' is not supported by the indexer API.`,

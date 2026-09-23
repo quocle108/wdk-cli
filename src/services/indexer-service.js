@@ -16,11 +16,63 @@ import { configService } from './config-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { walletsFile } from '../config/wdk-config.js'
 import { getAllTokens, getTokenByName, tokenSlugValue, getTokensSupportedBy } from './token-service.js'
-import { getOwn, hasOwn } from './override-service.js'
-import { resolveProtocolConfig, getProtocols } from './protocol-service.js'
+import { getOwn } from './override-service.js'
+import { resolveProtocolConfig, getProtocols, getAllProtocols } from './protocol-service.js'
 
-/** The token-slug system key and the `providers` entry name for the indexer. */
-const INDEXER = 'indexer'
+/**
+ * The system key the indexer's token codes are registered under in
+ * `metadata.slugs`. Independent of the provider's name: the code is the token
+ * segment of the indexer URL, not a vendor's vocabulary.
+ */
+const INDEXER_SLUG_KEY = 'indexer'
+
+/** The kind an indexer provider declares in the registry. */
+const INDEXER_KIND = 'indexer'
+
+/**
+ * Returns the name of the enabled indexer provider.
+ *
+ * @returns {string} The provider short name.
+ * @throws {WdkCliError} MISSING_CONFIG when no indexer provider is enabled.
+ * @throws {WdkCliError} INVALID_ARGUMENT when several are enabled at once.
+ */
+function indexerProvider () {
+  const usable = Object.entries(getProtocols())
+    .filter(([, entry]) => entry.kind === INDEXER_KIND)
+    .map(([name]) => name)
+  if (usable.length === 0) {
+    const known = Object.entries(getAllProtocols())
+      .filter(([, entry]) => entry.kind === INDEXER_KIND)
+      .map(([name]) => name)
+    throw new WdkCliError(
+      'No indexer is available.',
+      ErrorCode.MISSING_CONFIG,
+      known.length > 0
+        ? `Enable one with: wdk provider enable --name ${known[0]}`
+        : 'See the registered providers with: wdk provider list'
+    )
+  }
+  if (usable.length > 1) {
+    throw new WdkCliError(
+      `Several indexers are enabled: ${usable.join(', ')}.`,
+      ErrorCode.INVALID_ARGUMENT,
+      `Leave one enabled with: wdk provider disable --name ${usable[1]}`
+    )
+  }
+  return usable[0]
+}
+
+/**
+ * Checks that exactly one indexer provider is enabled, so a caller can fail
+ * before doing expensive work such as unlocking a wallet or deriving an address.
+ *
+ * @returns {void}
+ * @throws {WdkCliError} MISSING_CONFIG when no indexer provider is enabled.
+ * @throws {WdkCliError} INVALID_ARGUMENT when several are enabled at once.
+ */
+export function assertIndexerAvailable () {
+  indexerProvider()
+}
 
 /**
  * @typedef {Object} IndexerEndpoint
@@ -31,20 +83,21 @@ const INDEXER = 'indexer'
 
 /**
  * Returns the indexer's base URL and API key from its registry entry, merged
- * with the user's `providers.indexer.config` deltas.
+ * with the user's `providers.wdk-indexer.config` deltas.
  *
  * @returns {IndexerEndpoint} The endpoint settings.
- * @throws {WdkCliError} INVALID_ARGUMENT when the indexer provider is disabled.
- * @throws {WdkCliError} MISSING_CONFIG when no base URL is configured.
+ * @throws {WdkCliError} MISSING_CONFIG when no indexer provider is enabled.
+ * @throws {WdkCliError} INVALID_ARGUMENT when several are enabled at once.
+ * @throws {WdkCliError} MISSING_CONFIG when the base URL is unset.
  */
 function endpoint () {
-  const config = resolveProtocolConfig(INDEXER)
+  const config = resolveProtocolConfig(indexerProvider())
   const baseUrl = /** @type {string | undefined} */ (config.baseUrl)
   if (!baseUrl) {
     throw new WdkCliError(
       'Indexer base URL not configured.',
       ErrorCode.MISSING_CONFIG,
-      'Set it with: wdk config set --key providers.indexer.config.baseUrl --value <url>'
+      'Set it with: wdk config set --key providers.wdk-indexer.config.baseUrl --value <url>'
     )
   }
   return { baseUrl, apiKey: /** @type {string | undefined} */ (config.apiKey) }
@@ -103,7 +156,7 @@ export const INDEXER_TOKENS = [
   ...new Set(
     Object.values(getAllTokens()).flatMap((tokens) =>
       Object.values(tokens)
-        .map((t) => tokenSlugValue(t, INDEXER))
+        .map((t) => tokenSlugValue(t, INDEXER_SLUG_KEY))
         .filter((c) => typeof c === 'string' && c.length > 0)
     )
   )
@@ -137,8 +190,8 @@ export function getIndexerSlug (network) {
  */
 export function getIndexerTokens (network) {
   const codes = new Set()
-  for (const token of getTokensSupportedBy(network, INDEXER)) {
-    const code = tokenSlugValue(getTokenByName(network, token), INDEXER)
+  for (const token of getTokensSupportedBy(network, INDEXER_SLUG_KEY)) {
+    const code = tokenSlugValue(getTokenByName(network, token), INDEXER_SLUG_KEY)
     if (code) codes.add(code)
   }
   return [...codes]
@@ -157,16 +210,6 @@ export function isIndexerSupported (network) {
 }
 
 /**
- * Returns whether the indexer provider is enabled, which is independent of
- * whether a given network is supported by it.
- *
- * @returns {boolean} True when the indexer provider is enabled.
- */
-export function isIndexerEnabled () {
-  return hasOwn(getProtocols(), INDEXER)
-}
-
-/**
  * Fetches token transfer history for a single address from the indexer API.
  *
  * @param {string} network - The network name.
@@ -176,7 +219,6 @@ export function isIndexerEnabled () {
  * @returns {Promise<TokenTransfer[]>} Array of token transfers.
  * @throws {WdkCliError} NETWORK_NOT_SUPPORTED when the network has no `indexerSlug`.
  * @throws {WdkCliError} INVALID_ARGUMENT when the indexer provider is disabled.
- * @throws {WdkCliError} MISSING_CONFIG when no base URL is configured.
  * @throws {WdkCliError} NETWORK_ERROR when the indexer API rejects the request.
  */
 export async function getTokenTransfers (network, token, address, options = {}) {
@@ -207,8 +249,8 @@ export async function getTokenTransfers (network, token, address, options = {}) 
     if (response.status === 403) {
       throw new WdkCliError(
         'Indexer API error: 403 Forbidden. Please set your API key or use a proxy API for the indexer provider:\n' +
-          '  wdk config set --key providers.indexer.config.apiKey --value <your-api-key>\n' +
-          '  wdk config set --key providers.indexer.config.baseUrl --value <your-proxy-url>',
+          '  wdk config set --key providers.wdk-indexer.config.apiKey --value <your-api-key>\n' +
+          '  wdk config set --key providers.wdk-indexer.config.baseUrl --value <your-proxy-url>',
         ErrorCode.NETWORK_ERROR
       )
     }
@@ -228,7 +270,6 @@ export async function getTokenTransfers (network, token, address, options = {}) 
  * @param {BatchTransferRequestItem[]} items - The batch request items.
  * @returns {Promise<BatchTransferResultItem[]>} Array of per-item results.
  * @throws {WdkCliError} INVALID_ARGUMENT when the indexer provider is disabled.
- * @throws {WdkCliError} MISSING_CONFIG when no base URL is configured.
  * @throws {WdkCliError} NETWORK_ERROR when the indexer API rejects the request.
  */
 export async function getTokenTransfersBatch (items) {
@@ -251,8 +292,8 @@ export async function getTokenTransfersBatch (items) {
     if (response.status === 403) {
       throw new WdkCliError(
         'Indexer API error: 403 Forbidden. Please set your API key or use a proxy API for the indexer provider:\n' +
-          '  wdk config set --key providers.indexer.config.apiKey --value <your-api-key>\n' +
-          '  wdk config set --key providers.indexer.config.baseUrl --value <your-proxy-url>',
+          '  wdk config set --key providers.wdk-indexer.config.apiKey --value <your-api-key>\n' +
+          '  wdk config set --key providers.wdk-indexer.config.baseUrl --value <your-proxy-url>',
         ErrorCode.NETWORK_ERROR
       )
     }
