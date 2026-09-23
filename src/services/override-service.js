@@ -15,7 +15,7 @@
 import { configService } from './config-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
-/** @typedef {'modules' | 'networks' | 'tokens'} OverrideKind */
+/** @typedef {'modules' | 'networks' | 'tokens' | 'providers'} OverrideKind */
 
 /**
  * @typedef {Object} OverrideEntry

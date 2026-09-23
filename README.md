@@ -345,7 +345,9 @@ wdk bridge --network ethereum --token usdt --to-network avalanche --amount 100 -
 wdk swap --network ethereum --from-token usdt --to-token eth --amount-in 100 --protocol velora  # force a protocol
 ```
 
-`wdk swap` exchanges one token for another (add `--to-network` to swap across chains); `wdk bridge` moves the *same* token to another chain (single `--token`, exact-in `--amount`). Both are **best-route**: every installed protocol capable of the request is quoted and the best quote wins (highest output for exact-in, lowest input for `--amount-out`) — pass `--protocol <name>` to force one. Use `--dry-run` to preview the route, amounts, and skipped protocols without executing. Protocols come from the `protocols` registry in `wdk.config.json`; add more with `wdk module add`.
+`wdk swap` exchanges one token for another (add `--to-network` to swap across chains); `wdk bridge` moves the *same* token to another chain (single `--token`, exact-in `--amount`). Both are **best-route**: every installed protocol capable of the request is quoted and the best quote wins (highest output for exact-in, lowest input for `--amount-out`) — pass `--protocol <name>` to force one. Use `--dry-run` to preview the route, amounts, and skipped protocols without executing.
+
+Protocols come from the `providers` registry in `wdk.config.json`. Each entry names the module that implements it and declares its `kind` — `swap` (same network), `bridge` (same token, another network), or `swidge` (both) — and that declaration is what decides which protocols a request quotes: `wdk swap` quotes the `swap` and `swidge` entries, `wdk bridge` the `bridge` and `swidge` ones. Add more with `wdk module add`.
 
 ### Method
 
@@ -397,6 +399,58 @@ Supported tokens are derived from the registry — any token with `metadata.moon
 
 Configure via `wdk config set --key ramp.moonpay.apiKey --value <key>`, `ramp.moonpay.signUrl`, and `ramp.moonpay.environment`.
 
+### Provider
+
+```bash
+wdk provider list                                  # Registered providers with kind, module and status
+wdk provider info --name symbiosis                 # Config the module receives, in general and per network
+wdk provider add '{"name":"lifi","kind":"swidge","module":"@lifi/wdk-protocol-swidge-lifi"}'
+wdk provider add ./lifi.json                       # Same, from a file
+wdk provider delete --name lifi                    # Remove a provider you added
+wdk provider disable --name rhinofi                # Leave it out of routing, reversibly
+wdk provider enable --name rhinofi
+```
+
+A **provider** is a named, configured use of a protocol module: `velora` is the swap protocol backed by `@tetherto/wdk-protocol-swap-velora-evm`. The packaged ones live in the `providers` registry of `wdk.config.json`; your own are stored in user config and merged after them.
+
+Each entry declares a `kind` — `swap`, `bridge`, or `swidge`, which serves both — and that declaration is what decides which requests quote it. `wdk swap` quotes the `swap` and `swidge` providers, `wdk bridge` the `bridge` and `swidge` ones, all without importing a module first.
+
+To register your own, install the package with `wdk module add`, then name it in a spec:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `name` | Yes | Short name used by `--protocol`. Lowercase alphanumeric with hyphens, and not one already registered. |
+| `kind` | Yes | `swap`, `bridge`, or `swidge`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. |
+| `module` | Yes | The package backing it. Must already be registered, built-in or added with `wdk module add`. |
+| `config` | No | Settings applied on every network, such as an API key. |
+| `networks` | No | Per-network settings keyed by network name, shallow-merged over `config`. |
+
+Because the module runs inside the wallet daemon, adding, deleting or toggling a provider requires the default wallet's passphrase and locks the wallets, the same as `module add`. Disabling follows the rule the other registries use: a disabled provider keeps showing in `provider list` with a `disabled` status so you can find it again, a provider hidden by its disabled module drops out of the listing and cannot be toggled until the module is back, and deleting your own provider also drops any override it had.
+
+#### Provider configuration
+
+Settings are changed with `wdk config set`, for packaged and user-added providers alike. Everything about a provider lives under one key, with per-network settings nested inside it:
+
+```bash
+wdk config set --key providers.rhinofi.config.apiKey --value <key>                          # every network
+wdk config set --key providers.velora.networks.ethereum.swapMaxFee --value 200000000000000  # one network
+wdk config reset --key providers.rhinofi.config.apiKey                                      # back to the packaged value
+wdk provider info --name rhinofi                                                            # what the module receives
+```
+
+Per-network settings go under the provider rather than under `config set --network`, because `networks.<network>` in your config is handed to the wallet module verbatim as its SDK config.
+
+Four layers are shallow-merged, each winning over the ones above it:
+
+| | Layer |
+|---|---|
+| 1 | Packaged `providers.<name>.config` |
+| 2 | Your `providers.<name>.config` |
+| 3 | Packaged `networks.<network>.providers.<name>`, or a user-added provider's own `networks.<network>` |
+| 4 | Your `providers.<name>.networks.<network>` |
+
+`wdk provider info` prints the result of that merge, in general and for each network that overrides something, so it is the way to check what a module will actually be given. Changing any provider config locks the wallets, since the daemon caches a protocol instance per account.
+
 ### Module
 
 ```bash
@@ -412,19 +466,20 @@ wdk module remove --name @tetherto/wdk-wallet-evm          # Restore its default
 
 Built-in modules ship as regular npm dependencies of the CLI — installing the CLI installs them, with no lifecycle scripts. `wdk module add` registers an *additional* package (stored in user config, pinned to an exact version) and installs it; because module code runs inside the wallet daemon, adding or removing one requires the default wallet's passphrase to confirm (set `WDK_PASSPHRASE` for non-interactive use), same as `network create` and `token add`. After adding, the module can back a custom network — `wdk network create '{"network":"ton","module":"@tetherto/wdk-wallet-ton",...}'` — and a running daemon keeps the previously loaded code, so lock and unlock again to pick up module changes.
 
-Any entry can be disabled — built-in or your own. Each command matches its own registry exactly: `--name` is a module **package** name here, a **network** name for `wdk network enable|disable`, and `--network` + `--token` for `wdk token enable|disable`:
+Any entry can be disabled — built-in or your own. Each command matches its own registry exactly: `--name` is a module **package** name here, a **network** name for `wdk network enable|disable`, a **provider** name for `wdk provider enable|disable`, and `--network` + `--token` for `wdk token enable|disable`:
 
 ```bash
-wdk module  disable --name @tetherto/wdk-wallet-tron   # module: hides every network and protocol it backs
-wdk network disable --name tron                        # one network
-wdk token   disable --network ethereum --token usdt    # one token
+wdk module   disable --name @tetherto/wdk-wallet-tron   # module: hides every network and provider it backs
+wdk network  disable --name tron                        # one network
+wdk provider disable --name rhinofi                     # one provider
+wdk token    disable --network ethereum --token usdt    # one token
 ```
 
-The rule is **everything can be disabled; only entries you created can be deleted** — built-ins ship inside the package, so there is nothing to delete, and `delete` on your own entry also drops any override it had. Disabling is reversible: `module list`, `network list`, and `token list` keep showing disabled entries with a `Status` of `disabled` (so you can see what to re-enable), and `network info` / `token info` still print the full entry. What the entry *contains* is unavailable while it is off: a disabled module's networks drop out of `network list` and cannot be toggled until the module is back, and on a disabled network `token list --network <n>`, `token info` and `method list` fail — as does any command that would *use* it, each with the exact enable command in the hint.
+The rule is **everything can be disabled; only entries you created can be deleted** — built-ins ship inside the package, so there is nothing to delete, and `delete` on your own entry also drops any override it had. Disabling is reversible: `module list`, `network list`, `provider list` and `token list` keep showing disabled entries with a `Status` of `disabled` (so you can see what to re-enable), and `network info` / `provider info` / `token info` still print the full entry. What the entry *contains* is unavailable while it is off: a disabled module's networks and providers drop out of their listings and cannot be toggled until the module is back, and on a disabled network `token list --network <n>`, `token info` and `method list` fail — as does any command that would *use* it, each with the exact enable command in the hint.
 
-Protocols have no separate command: a protocol *is* a module (`velora` → `@tetherto/wdk-protocol-swap-velora-evm`), so disabling the package disables the protocol. Native tokens cannot be disabled — disable the network instead.
+Two levels, then: a **module** is the package, installed, pinned and versioned, while a **network** or a **provider** is a configured use of one. Disabling a module hides every network and provider it backs; disabling a network or provider hides that one entry. Native tokens cannot be disabled — disable the network instead.
 
-Choices are stored in user config under `overrides` as deltas — only what you changed, never a copy of the defaults — so a CLI upgrade that ships new modules, versions, networks, or tokens applies automatically to everything you have not overridden, with no migration step. Re-enabling deletes the delta, and the key disappears once the last one is gone. `wdk module list` also marks a module `overridden` with its `(default: …)` version, or `stale override` for an entry the catalog no longer ships (harmless; clear it by enabling that name). `--json` output carries the state directly: networks gain an `enabled` field, and token listings include a `disabled` array of `<network>/<token>` ids. The MCP server lists only usable entries, so agents are never offered a disabled network or token. Any enable/disable locks the wallets, like other SDK-affecting config changes — unlock again to apply.
+Choices are stored in user config under `overrides` as deltas — only what you changed, never a copy of the defaults — so a CLI upgrade that ships new modules, versions, networks, providers, or tokens applies automatically to everything you have not overridden, with no migration step. Re-enabling deletes the delta, and the key disappears once the last one is gone. `wdk module list` also marks a module `overridden` with its `(default: …)` version, or `stale override` for an entry the catalog no longer ships (harmless; clear it by enabling that name). `--json` output carries the state directly: networks gain an `enabled` field, and token listings include a `disabled` array of `<network>/<token>` ids. The MCP server lists only usable entries, so agents are never offered a disabled network or token. Any enable/disable locks the wallets, like other SDK-affecting config changes — unlock again to apply.
 
 Custom modules are not package.json dependencies, so a plain `npm install` prunes them from `node_modules`. `wdk module list` shows them as `not installed`; re-running `wdk module add --name <pkg>` reinstalls them at their registered pin.
 

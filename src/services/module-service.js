@@ -77,6 +77,27 @@ export function getCustomModules () {
 }
 
 /**
+ * Returns the names of every module package the CLI knows about: the catalog
+ * modules plus any added with `wdk module add`, disabled ones included. Every
+ * `import()` of module code must check a specifier against this list first.
+ *
+ * @returns {string[]} The registered package names.
+ */
+export function getRegisteredModuleNames () {
+  return [...new Set([...Object.keys(walletsFile.modules || {}), ...Object.keys(getCustomModules())])]
+}
+
+/**
+ * Returns whether a module specifier names a registered package.
+ *
+ * @param {string} name - The package name to check.
+ * @returns {boolean} True when the package is in the catalog or was added by the user.
+ */
+export function isRegisteredModule (name) {
+  return getRegisteredModuleNames().includes(name)
+}
+
+/**
  * Returns all enabled modules, merging built-in catalog modules and user-added
  * ones. Built-in entries win on name collision, disabled entries are dropped,
  * and version overrides applied.
@@ -295,12 +316,12 @@ export function resolveRemoveTarget (name) {
  */
 export function setModuleEnabled (name, enabled) {
   const verb = enabled ? 'enable' : 'disable'
-  const protocol = getOwn(walletsFile.protocols, name)
+  const protocol = getOwn(walletsFile.providers, name)
   let suggestion = 'See package names with: wdk module list'
   if (hasOwn(walletsFile.networks, name)) {
     suggestion = `'${name}' is a network. Use: wdk network ${verb} --name ${name}`
   } else if (protocol) {
-    suggestion = `'${name}' is a protocol. ${enabled ? 'Enable' : 'Disable'} its module: wdk module ${verb} --name ${protocol.module}`
+    suggestion = `'${name}' is a provider. Use: wdk provider ${verb} --name ${name}`
   }
   return setEnabled(
     'modules',

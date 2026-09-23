@@ -25,6 +25,8 @@ jest.unstable_mockModule('../../../src/services/config-service.js', () => ({
 
 const {
   getInstalledVersion,
+  getRegisteredModuleNames,
+  isRegisteredModule,
   getAllModules,
   getModuleStatuses,
   resolveAddTarget,
@@ -80,6 +82,52 @@ describe('getAllModules', () => {
     getConfig.mockReturnValue({ [spark]: { version: '0.0.1' } })
 
     expect(getAllModules()[spark].version).toBe(catalog.modules[spark].version)
+  })
+})
+
+describe('getRegisteredModuleNames', () => {
+  it('returns the catalog packages plus the user-added ones', () => {
+    getConfig.mockReturnValue({ '@dummy/added': { version: '1.0.0' } })
+
+    const names = getRegisteredModuleNames()
+
+    expect(getConfig).toHaveBeenCalledWith('customModules')
+    expect(names).toEqual([...Object.keys(catalog.modules), '@dummy/added'])
+  })
+
+  it('lists a package added under a catalog name only once', () => {
+    getConfig.mockReturnValue({ '@tetherto/wdk-wallet-spark': { version: '0.0.1' } })
+
+    expect(getRegisteredModuleNames()).toEqual(Object.keys(catalog.modules))
+  })
+
+  it('keeps a disabled package registered, since disabling is not unregistering', () => {
+    withOverrides({ modules: { '@tetherto/wdk-wallet-evm': { enabled: false } } })
+
+    expect(getRegisteredModuleNames()).toEqual(Object.keys(catalog.modules))
+  })
+})
+
+describe('isRegisteredModule', () => {
+  it('accepts a catalog package', () => {
+    expect(isRegisteredModule('@tetherto/wdk-wallet-evm')).toBe(true)
+  })
+
+  it('accepts a user-added package', () => {
+    getConfig.mockReturnValue({ '@dummy/added': { version: '1.0.0' } })
+
+    expect(isRegisteredModule('@dummy/added')).toBe(true)
+  })
+
+  it.each([
+    ['an absolute path', '/tmp/evil.mjs'],
+    ['a relative path', './evil.mjs'],
+    ['a file URL', 'file:///tmp/evil.mjs'],
+    ['a data URL', 'data:text/javascript,globalThis.pwned=1'],
+    ['an unknown package', '@nope/unregistered'],
+    ['an empty specifier', '']
+  ])('refuses %s', (_label, specifier) => {
+    expect(isRegisteredModule(specifier)).toBe(false)
   })
 })
 

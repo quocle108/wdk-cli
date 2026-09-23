@@ -18,7 +18,6 @@ import {
   isTestnet,
   isBuiltinNetwork,
   isCustomNetwork,
-  isValidNetwork,
   isNetworkDisabled,
   saveCustomNetwork,
   deleteCustomNetwork,
@@ -112,10 +111,6 @@ export function registerNetworkCommand (program) {
       const { network: name, module: walletType, displayName, testnet, indexerSlug } = spec
       const networkConfig = spec.config ?? {}
       const tokens = spec.tokens ?? []
-
-      if (isValidNetwork(name)) {
-        throw new WdkCliError(`Network '${name}' already exists.`, ErrorCode.WALLET_EXISTS)
-      }
 
       const config = {
         name,

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "defaults": {
     "defaultIndex": 0,
     "indexer": {
@@ -59,20 +59,24 @@
     "@rhino.fi/wdk-protocol-swidge-rhinofi": { "version": "1.3.1" },
     "@symbiosis-finance/wdk-protocol-swidge-symbiosis": { "version": "1.3.0" }
   },
-  "protocols": {
+  "providers": {
     "velora": {
+      "kind": "swap",
       "module": "@tetherto/wdk-protocol-swap-velora-evm",
       "config": {}
     },
     "usdt0": {
+      "kind": "bridge",
       "module": "@tetherto/wdk-protocol-bridge-usdt0-evm",
       "config": {}
     },
     "rhinofi": {
+      "kind": "swidge",
       "module": "@rhino.fi/wdk-protocol-swidge-rhinofi",
       "config": { "apiKey": "" }
     },
     "symbiosis": {
+      "kind": "swidge",
       "module": "@symbiosis-finance/wdk-protocol-swidge-symbiosis",
       "config": { "partnerId": "wdk" }
     }
@@ -124,7 +128,7 @@
         "provider": "https://ethereum-rpc.publicnode.com",
         "transferMaxFee": 5000000000000000
       },
-      "protocols": {
+      "providers": {
         "symbiosis": { "chain": 1 }
       }
     },
@@ -150,7 +154,7 @@
         "provider": "https://polygon.drpc.org",
         "transferMaxFee": 5000000000000000
       },
-      "protocols": {
+      "providers": {
         "symbiosis": { "chain": 137 }
       }
     },
@@ -164,7 +168,7 @@
         "provider": "https://arb1.arbitrum.io/rpc",
         "transferMaxFee": 1000000000000000
       },
-      "protocols": {
+      "providers": {
         "symbiosis": { "chain": 42161 }
       }
     },
@@ -177,7 +181,7 @@
         "provider": "https://mainnet.base.org",
         "transferMaxFee": 1000000000000000
       },
-      "protocols": {
+      "providers": {
         "symbiosis": { "chain": 8453 }
       }
     },
@@ -190,7 +194,7 @@
         "provider": "https://bsc-dataseed.binance.org",
         "transferMaxFee": 5000000000000000
       },
-      "protocols": {
+      "providers": {
         "symbiosis": { "chain": 56 }
       }
     },
@@ -203,7 +207,7 @@
         "provider": "https://api.avax.network/ext/bc/C/rpc",
         "transferMaxFee": 5000000000000000
       },
-      "protocols": {
+      "providers": {
         "symbiosis": { "chain": 43114 }
       }
     },
