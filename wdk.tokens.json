@@ -15,7 +15,11 @@
         "slugs": {
           "indexer": "btc",
           "moonpay": "btc",
-          "bitfinex": "tBTCUSD"
+          "bitfinex": "tBTCUSD",
+          "transak": {
+            "slug": "BTC",
+            "network": "mainnet"
+          }
         }
       }
     },
@@ -50,7 +54,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "eth",
-          "bitfinex": "tETHUSD"
+          "bitfinex": "tETHUSD",
+          "transak": {
+            "slug": "ETH",
+            "network": "ethereum"
+          }
         }
       }
     },
@@ -69,7 +77,11 @@
         "slugs": {
           "indexer": "usdt",
           "moonpay": "usdt",
-          "bitfinex": "tUSTUSD"
+          "bitfinex": "tUSTUSD",
+          "transak": {
+            "slug": "USDT",
+            "network": "ethereum"
+          }
         }
       }
     },
@@ -88,7 +100,11 @@
         "slugs": {
           "indexer": "xaut",
           "moonpay": "xaut",
-          "bitfinex": "tXAUT:USD"
+          "bitfinex": "tXAUT:USD",
+          "transak": {
+            "slug": "XAUT",
+            "network": "ethereum"
+          }
         }
       }
     },
@@ -142,7 +158,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "pol_polygon",
-          "bitfinex": "tPOLUSD"
+          "bitfinex": "tPOLUSD",
+          "transak": {
+            "slug": "POL",
+            "network": "polygon"
+          }
         }
       }
     },
@@ -177,7 +197,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "eth_arbitrum",
-          "bitfinex": "tETHUSD"
+          "bitfinex": "tETHUSD",
+          "transak": {
+            "slug": "ETH",
+            "network": "arbitrum"
+          }
         }
       }
     },
@@ -195,7 +219,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "eth_base",
-          "bitfinex": "tETHUSD"
+          "bitfinex": "tETHUSD",
+          "transak": {
+            "slug": "ETH",
+            "network": "base"
+          }
         }
       }
     },
@@ -213,7 +241,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "bnb_bsc",
-          "bitfinex": ""
+          "bitfinex": "",
+          "transak": {
+            "slug": "BNB",
+            "network": "bsc"
+          }
         }
       }
     },
@@ -248,7 +280,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "avax_cchain",
-          "bitfinex": "tAVAX:USD"
+          "bitfinex": "tAVAX:USD",
+          "transak": {
+            "slug": "AVAX",
+            "network": "avaxcchain"
+          }
         }
       }
     },
@@ -283,7 +319,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "sol",
-          "bitfinex": "tSOLUSD"
+          "bitfinex": "tSOLUSD",
+          "transak": {
+            "slug": "SOL",
+            "network": "solana"
+          }
         }
       }
     },
@@ -301,7 +341,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "usdt_sol",
-          "bitfinex": "tUSTUSD"
+          "bitfinex": "tUSTUSD",
+          "transak": {
+            "slug": "USDT",
+            "network": "solana"
+          }
         }
       }
     },
@@ -387,7 +431,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "trx",
-          "bitfinex": "tTRXUSD"
+          "bitfinex": "tTRXUSD",
+          "transak": {
+            "slug": "TRX",
+            "network": "mainnet"
+          }
         }
       }
     },
@@ -406,7 +454,11 @@
         "slugs": {
           "indexer": "usdt",
           "moonpay": "usdt_trx",
-          "bitfinex": "tUSTUSD"
+          "bitfinex": "tUSTUSD",
+          "transak": {
+            "slug": "USDT",
+            "network": "tron"
+          }
         }
       }
     },
@@ -440,7 +492,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "eth",
-          "bitfinex": "tETHUSD"
+          "bitfinex": "tETHUSD",
+          "transak": {
+            "slug": "ETH",
+            "network": "ethereum"
+          }
         }
       }
     },
@@ -459,7 +515,11 @@
         "slugs": {
           "indexer": "usdt",
           "moonpay": "usdt",
-          "bitfinex": "tUSTUSD"
+          "bitfinex": "tUSTUSD",
+          "transak": {
+            "slug": "USDT",
+            "network": "ethereum"
+          }
         }
       }
     },
@@ -478,7 +538,11 @@
         "slugs": {
           "indexer": "xaut",
           "moonpay": "xaut",
-          "bitfinex": "tXAUT:USD"
+          "bitfinex": "tXAUT:USD",
+          "transak": {
+            "slug": "XAUT",
+            "network": "ethereum"
+          }
         }
       }
     },
@@ -532,7 +596,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "pol_polygon",
-          "bitfinex": "tPOLUSD"
+          "bitfinex": "tPOLUSD",
+          "transak": {
+            "slug": "POL",
+            "network": "polygon"
+          }
         }
       }
     },
@@ -567,7 +635,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "eth_arbitrum",
-          "bitfinex": "tETHUSD"
+          "bitfinex": "tETHUSD",
+          "transak": {
+            "slug": "ETH",
+            "network": "arbitrum"
+          }
         }
       }
     },
@@ -585,7 +657,11 @@
       "metadata": {
         "slugs": {
           "moonpay": "eth_base",
-          "bitfinex": "tETHUSD"
+          "bitfinex": "tETHUSD",
+          "transak": {
+            "slug": "ETH",
+            "network": "base"
+          }
         }
       }
     },
@@ -619,7 +695,11 @@
       "testnet": false,
       "metadata": {
         "slugs": {
-          "bitfinex": "tUSTUSD"
+          "bitfinex": "tUSTUSD",
+          "transak": {
+            "slug": "USDT0",
+            "network": "plasma"
+          }
         }
       }
     }
