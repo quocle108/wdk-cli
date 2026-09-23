@@ -14,7 +14,12 @@
 
 import { jest } from '@jest/globals'
 
-import { getIndexerSlug, isIndexerSupported } from '../../../src/services/indexer-service.js'
+import {
+  getIndexerSlug,
+  isIndexerSupported,
+  isIndexerEnabled,
+  getTokenTransfers
+} from '../../../src/services/indexer-service.js'
 import { configService } from '../../../src/services/config-service.js'
 
 describe('getIndexerSlug', () => {
@@ -41,4 +46,54 @@ describe('getIndexerSlug', () => {
       expect(isIndexerSupported(name)).toBe(false)
     }
   )
+})
+
+describe('indexer endpoint configuration', () => {
+  const ADDRESS = '0x28C6c06298d514Db089934071355E5743bf21d60'
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
+  it('refuses to call the API when the indexer provider is disabled', async () => {
+    const getMock = jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'overrides' ? { providers: { indexer: { enabled: false } } } : undefined
+    )
+    const fetchMock = jest.spyOn(globalThis, 'fetch')
+
+    await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
+      "Protocol 'indexer' is disabled."
+    )
+
+    expect(getMock).toHaveBeenCalledWith('overrides')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('reports the indexer as disabled before any wallet work', () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'overrides' ? { providers: { indexer: { enabled: false } } } : undefined
+    )
+
+    expect(isIndexerEnabled()).toBe(false)
+  })
+
+  it('reports the indexer as enabled by default', () => {
+    jest.spyOn(configService, 'get').mockReturnValue(undefined)
+
+    expect(isIndexerEnabled()).toBe(true)
+  })
+
+  it('reports a missing base URL against the provider config key', async () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'providers.indexer.config' ? { baseUrl: '' } : undefined
+    )
+
+    await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
+      expect.objectContaining({
+        message: 'Indexer base URL not configured.',
+        code: 'MISSING_CONFIG',
+        suggestion: 'Set it with: wdk config set --key providers.indexer.config.baseUrl --value <url>'
+      })
+    )
+  })
 })
