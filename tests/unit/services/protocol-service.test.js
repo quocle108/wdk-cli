@@ -32,6 +32,7 @@ const {
   resolveProtocolConfig,
   getProviderNetworks,
   assertImplementsKind,
+  PROTOCOL_KINDS,
   loadProtocolClass,
   isProviderDisabled,
   setProviderEnabled,
@@ -61,6 +62,25 @@ beforeEach(() => {
 function withConfig (values) {
   getConfig.mockImplementation((key) => (Object.hasOwn(values, key) ? values[key] : undefined))
 }
+
+describe('the packaged provider registry', () => {
+  // The CLI resolves these kinds by kind, not by name, and refuses to guess
+  // between two. Shipping a second one is a release bug, not a user error.
+  it.each(['indexer', 'pricing'])('registers exactly one %s provider', (kind) => {
+    const names = Object.entries(catalog.providers)
+      .filter(([, entry]) => entry.kind === kind)
+      .map(([name]) => name)
+
+    expect(names).toHaveLength(1)
+  })
+
+  it('declares a known kind on every entry', () => {
+    for (const [name, entry] of Object.entries(catalog.providers)) {
+      expect(PROTOCOL_KINDS).toContain(entry.kind)
+      expect(typeof name).toBe('string')
+    }
+  })
+})
 
 describe('getProtocols', () => {
   it('returns the providers declared in wdk.config.json, each with a declared kind', () => {
