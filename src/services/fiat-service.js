@@ -144,11 +144,11 @@ export async function postToEndpoint (endpoint, payload) {
     )
   }
   if (!response.ok) {
-    const body = await response.text().catch(() => '')
-    let reason = body
+    const answer = await response.text().catch(() => '')
+    let reason = answer
     try {
-      const parsed = JSON.parse(body)
-      reason = parsed?.error ?? parsed?.message ?? body
+      const parsed = JSON.parse(answer)
+      reason = parsed?.error ?? parsed?.message ?? answer
     } catch {}
     throw new WdkCliError(
       `Endpoint '${endpoint}' failed: ${response.status} ${response.statusText}` +
@@ -291,7 +291,7 @@ function slugFor (provider, network, token) {
       )
     }
     const supported = getTokensSupportedBy(network, provider)
-    const add = `Add one with: wdk config set --key overrides.tokens."${network}/${lower}".metadata.slugs.${provider} --value '<code>'`
+    const add = `Add one with: wdk config set --key overrides.tokens.${network}/${lower}.metadata.slugs.${provider} --value '<code>'`
     throw new WdkCliError(
       `Token '${lower}' on '${network}' has no ${provider} mapping.`,
       ErrorCode.TOKEN_NOT_SUPPORTED,
@@ -338,7 +338,7 @@ function pickAsset (provider, assets, code, extras, network, token) {
     throw new WdkCliError(
       `${provider} lists '${code}' on ${candidates.length} networks, so the mapping must name one.`,
       ErrorCode.TOKEN_NOT_SUPPORTED,
-      `Set it with: wdk config set --key overrides.tokens."${network}/${token}".metadata.slugs.${provider} ` +
+      `Set it with: wdk config set --key overrides.tokens.${network}/${token}.metadata.slugs.${provider} ` +
         `--value '{"slug":"${code}","network":"<one of: ${candidates.map((c) => c.networkCode).join(', ')}>"}'`
     )
   }
