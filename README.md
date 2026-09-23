@@ -53,10 +53,10 @@ A multi-chain crypto wallet for AI agents, built on [Wallet Development Kit (WDK
 
 - **Wallet** — Multiple named wallets with per-wallet passphrases and BIP-39 seed phrases, encrypted at rest with AES-256-GCM. Background daemon holds keys in memory after unlock, with per-wallet TTL
 - **Network** — Bitcoin, Ethereum, Polygon, Arbitrum, Base, BSC, Avalanche, Solana, Tron, Spark, Smart Account (ERC-4337) + testnets. Add custom networks with `network create`
-- **Token** — Built-in registry of tokens per network (symbol, decimals, address, indexer/MoonPay/Bitfinex mappings). Add your own with `token add`
+- **Token** — Built-in registry of tokens per network (symbol, decimals, address, indexer/MoonPay/Transak/Bitfinex mappings). Add your own with `token add`
 - **Get** — Derive wallet addresses, check balances, and view transaction history across all networks
 - **Send** — Native and token transfers with fee estimation and dry-run preview. Decimal amounts by default
-- **Buy/Sell** — On/off ramp via MoonPay (buy crypto with fiat, sell crypto for fiat)
+- **Buy/Sell** — On/off ramp via MoonPay or Transak (buy crypto with fiat, sell crypto for fiat)
 - **Config** — Per-network configuration with env var overrides
 
 ## Requirements
@@ -388,23 +388,25 @@ Wallet modules expose chain-specific methods beyond the generic interface (addre
 
 ```bash
 # Buy crypto with fiat
-wdk buy --network ethereum --token usdt                          # Opens MoonPay widget
-wdk buy --network ethereum --token eth --fiat-amount 100         # Buy $100 of ETH
-wdk buy --network bitcoin --token btc --crypto-amount 0.05       # Buy 0.05 BTC
+wdk buy --network ethereum --token eth --fiat-amount 100 --provider moonpay
+wdk buy --network bitcoin --token btc --crypto-amount 0.05 --provider transak
 
 # Sell crypto for fiat
-wdk sell --network ethereum --token usdt                         # Opens MoonPay sell widget
-wdk sell --network ethereum --token eth --fiat-amount 200        # Sell ETH for $200
-wdk sell --network polygon --token usdt --crypto-amount 50       # Sell 50 USDT on Polygon
+wdk sell --network ethereum --token eth --fiat-amount 200 --provider moonpay
+wdk sell --network tron --token usdt --crypto-amount 50 --provider transak
 ```
 
-The fiat provider comes from the provider registry, like swap and bridge. MoonPay ships enabled; all three of its config values are required:
+Fiat providers come from the provider registry, like swap and bridge, and can be added with `wdk provider add`. **MoonPay and Transak both ship enabled**, so `--provider` is required until you disable one. Configure whichever you use:
 
 ```bash
 wdk config set --key providers.moonpay.config.apiKey --value <your-publishable-key>
 wdk config set --key providers.moonpay.config.signUrl --value <your-sign-url>
 wdk config set --key providers.moonpay.config.environment --value sandbox    # or production
+
+wdk provider disable --name transak     # or just turn one off
 ```
+
+`signUrl` is an endpoint the CLI POSTs to, not a value passed on: these providers mint their widget URL on your backend, where the API secret lives.
 
 **Options:**
 
@@ -412,35 +414,41 @@ wdk config set --key providers.moonpay.config.environment --value sandbox    # o
 |------|-------------|
 | `--network <network>` | Blockchain network (required) |
 | `--token <token>` | Crypto asset code, e.g. `usdt`, `eth`, `btc` (required) |
-| `--provider <name>` | Fiat provider (default: the only enabled one) |
+| `--provider <name>` | Fiat provider; required while more than one is enabled |
 | `--fiat-currency <currency>` | Fiat currency code (default: `usd`) |
 | `--fiat-amount <value>` | Fiat amount (mutually exclusive with `--crypto-amount`) |
 | `--crypto-amount <value>` | Crypto amount (mutually exclusive with `--fiat-amount`) |
-
-`--provider` is only needed when more than one fiat provider is enabled; with several enabled and none named, the CLI lists them and asks you to pick.
 
 Supported tokens are whatever the provider has a mapping for — `metadata.slugs.<provider>` in `wdk.tokens.json`, or on a custom token added via `wdk token add`. There is no fallback: an unmapped token is an error naming the tokens that provider does carry, never a guess from the symbol.
 
 ### Adding another fiat provider
 
-Fiat providers ship with the CLI and cannot be registered with `wdk provider add`
-— each one needs a small CLI-side adapter, because WDK's `FiatProtocol` covers
-the calls but not how a provider is credentialed, how it names tokens, or what
-its `environment` values mean.
+Every fiat module implements WDK's `FiatProtocol`, so adding one needs no CLI
+code. Register it like any other provider:
 
-Adding one is four steps:
+```bash
+wdk module add --name @banxa/wdk-protocol-fiat-banxa
+wdk provider add '{"name":"banxa","kind":"fiat","module":"@banxa/wdk-protocol-fiat-banxa",
+                   "config":{"apiKey":"","widgetUrl":""},"endpointKeys":["widgetUrl"]}'
+wdk config set --key overrides.tokens.ethereum/usdt.metadata.slugs.banxa --value '{"slug":"USDT","network":"ethereum"}'
+```
 
-1. Write `src/services/ramp/<name>.js`, extending `BaseRampProvider`. Override
-   `_moduleConfig` if the module takes callbacks rather than values (a widget
-   URL minted by your backend, say), and `validateEnvironment` if its
-   environment has to agree with the network. A provider needing neither is a
-   three-line class — the base handles module loading, token resolution,
-   quoting and URL building.
-2. Register it in the `ADAPTERS` map in `src/services/ramp/index.js`.
-3. Add the package under `modules` and the provider under `providers` in
-   `wdk.config.json`, then run `npm run sync-modules`.
-4. Map the tokens it carries, via `metadata.slugs.<name>` in `wdk.tokens.json`
-   or per-user `overrides.tokens.<network>/<token>.metadata.slugs.<name>`.
+`endpointKeys` names the config keys the module takes as a **callback** rather
+than a value. The CLI stores a URL for each and POSTs to it when the module
+calls back — that is how a provider that mints its widget URL on your backend
+is configured without writing code.
+
+A provider that ships with the CLI is the same shape, declared in
+`wdk.config.json` instead:
+
+```jsonc
+"transak": {
+  "kind": "fiat",
+  "module": "@transak/wdk-protocol-fiat-transak",
+  "config": { "apiKey": "", "widgetUrl": "", "getOrder": "", "environment": "" },
+  "endpointKeys": ["widgetUrl", "getOrder"]
+}
+```
 
 Users then configure and toggle it like any other provider:
 

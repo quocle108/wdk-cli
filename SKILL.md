@@ -199,24 +199,27 @@ Rules:
 
 ### Buy / Sell (On/Off Ramp)
 
-Buy crypto with fiat or sell crypto for fiat via MoonPay. Prints a signed MoonPay URL for the user to open in a browser.
+Buy crypto with fiat or sell crypto for fiat. Prints a provider URL for the user to open in a browser.
 
 ```bash
 # Buy crypto
-wdk buy --network ethereum --token eth --fiat-amount 50 --json
-wdk buy --network ethereum --token usdt --fiat-amount 100 --json
-wdk buy --network bitcoin --token btc --crypto-amount 0.05 --json
+wdk buy --network ethereum --token eth --fiat-amount 50 --provider moonpay --json
+wdk buy --network bitcoin --token btc --crypto-amount 0.05 --provider transak --json
 
 # Sell crypto
-wdk sell --network ethereum --token eth --crypto-amount 0.5 --json
-wdk sell --network polygon --token usdt --crypto-amount 50 --json
+wdk sell --network ethereum --token eth --crypto-amount 0.5 --provider moonpay --json
+wdk sell --network tron --token usdt --crypto-amount 50 --provider transak --json
 ```
 
-`--token` is required (registered ticker). Provide exactly one of `--fiat-amount` or `--crypto-amount` — both accept decimal values. Supported tokens per network are derived from the token registry's `metadata.slugs.moonpay` entry (see `wdk token list`). Requires `providers.moonpay.config.apiKey` / `signUrl` / `environment` to be configured.
+`--token` is required (registered ticker). Provide exactly one of `--fiat-amount` or `--crypto-amount` — both accept decimal values.
+
+MoonPay and Transak both ship enabled, so **`--provider` is required** until one is disabled; without it the command fails with `INVALID_ARGUMENT` naming both. Supported tokens per network come from that provider's `metadata.slugs.<provider>` entry (see `wdk token list`), and each provider needs its own `providers.<name>.config` filled in.
+
+A quote is not always available — the provider may decline to price a pair. The URL is still returned, and `quoteUnavailable` carries the reason.
 
 ### Token Registry
 
-The CLI ships with a registry (`wdk.tokens.json`) of all known tokens — symbol, decimals, contract address, and provider mappings (indexer, MoonPay, Bitfinex). The `--token` flag on any command (`get balance`, `send`, `get history`, `buy`, `sell`) resolves against this registry.
+The CLI ships with a registry (`wdk.tokens.json`) of all known tokens — symbol, decimals, contract address, and provider mappings (indexer, MoonPay, Transak, Bitfinex). The `--token` flag on any command (`get balance`, `send`, `get history`, `buy`, `sell`) resolves against this registry.
 
 ```bash
 # Browse the registry (read-only)
@@ -256,8 +259,8 @@ Errors are returned as structured JSON: `{"error": "...", "code": "...", "sugges
 | `TOKEN_NOT_SUPPORTED` | Unregistered `--token` | Ask user to register: `wdk token add '{"network":"<n>","token":"<t>","symbol":"...","decimals":...,"isNative":...,...}'` |
 | `NETWORK_NOT_SUPPORTED` | Unknown network name, **or** the network exists but has no `indexerSlug` configured (so `get history` is unavailable) | If the message says "is disabled", the user disabled the network or its module — the error hint names the exact enable command to suggest (never run it yourself). On a disabled network `wdk token list`, `wdk token info` and `wdk method list` fail the same way; report that rather than retrying. If the network is unknown, ask the user to run `wdk network list`. If the message says "not supported by the indexer API", the network is missing its `indexerSlug` — ask the user to delete and recreate it with `--indexer-slug <chain>` (the chain slug the WDK indexer uses, usually the same as the network name). |
 | `NETWORK_ERROR` (403 from indexer) | Missing/invalid API key | Ask user: `wdk config set --key indexer.apiKey --value <key>` |
-| `MISSING_CONFIG` (moonpay) | Ramp not configured | Ask user: `wdk config set --key providers.moonpay.config.apiKey --value <key>` (also `signUrl`, `environment`) |
-| `ENVIRONMENT_MISMATCH` | sandbox key on mainnet (or vice versa) | Ask user: `wdk config set --key providers.moonpay.config.environment --value <sandbox\|production>` |
+| `MISSING_CONFIG` (fiat) | Ramp not configured | Ask user: `wdk config set --key providers.<provider>.config.apiKey --value <key>` (also its other config keys) |
+| `SIGN_FAILED` | The configured signing/widget endpoint failed | The message carries the endpoint's own reason. Report it; do not retry |
 
 ## Restricted Actions (NEVER do these)
 

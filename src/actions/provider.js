@@ -28,7 +28,6 @@ import {
   removeCustomProvider
 } from '../services/protocol-service.js'
 import { isRegisteredModule } from '../services/module-service.js'
-import { FIAT } from '../services/fiat-service.js'
 import { hasOwn } from '../services/override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
@@ -40,6 +39,8 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  * @property {string} name - The provider short name (lowercase alphanumeric with hyphens).
  * @property {ProtocolKind} kind - What the provider does; decides which requests quote it.
  * @property {string} module - The module package backing it; must already be registered.
+ * @property {string[]} [endpointKeys] - Config keys the module takes as a callback rather than
+ *   a value; the CLI stores a URL for each and POSTs to it when the module calls back.
  * @property {Record<string, unknown>} [config] - General config applied on every network.
  * @property {Record<string, Record<string, unknown>>} [networks] - Per-network config overrides.
  */
@@ -147,14 +148,6 @@ export function validateProviderSpec (data) {
       ErrorCode.INVALID_ARGUMENT
     )
   }
-  if (kind === FIAT) {
-    throw new WdkCliError(
-      'Fiat providers cannot be added.',
-      ErrorCode.INVALID_ARGUMENT,
-      'Fiat providers ship with the CLI. See the available ones with: wdk provider list'
-    )
-  }
-
   const module = obj.module
   if (typeof module !== 'string' || !module) {
     throw new WdkCliError(
@@ -168,6 +161,17 @@ export function validateProviderSpec (data) {
       ErrorCode.UNSUPPORTED_MODULE,
       `Add it first with: wdk module add --name ${module}`
     )
+  }
+
+  const endpointKeys = obj.endpointKeys
+  if (endpointKeys !== undefined) {
+    if (!Array.isArray(endpointKeys) || endpointKeys.some((k) => typeof k !== 'string' || !k)) {
+      throw new WdkCliError(
+        'Provider spec "endpointKeys" must be an array of non-empty strings.',
+        ErrorCode.INVALID_ARGUMENT,
+        'Name the config keys the module takes as a callback, e.g. {"endpointKeys":["widgetUrl"]}'
+      )
+    }
   }
 
   const config = objectField(obj, 'config')
@@ -185,6 +189,7 @@ export function validateProviderSpec (data) {
 
   /** @type {ProviderSpec} */
   const spec = { name, kind, module }
+  if (endpointKeys) spec.endpointKeys = /** @type {string[]} */ (endpointKeys)
   if (config) spec.config = config
   if (networks) spec.networks = /** @type {Record<string, Record<string, unknown>>} */ (networks)
   return spec

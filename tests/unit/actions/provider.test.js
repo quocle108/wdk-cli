@@ -86,6 +86,37 @@ describe('validateProviderSpec', () => {
     expect(validateProviderSpec({ ...LIFI_SPEC, note: 'ignored' })).toEqual(LIFI_SPEC)
   })
 
+  it('accepts a fiat provider, which needs no CLI-side adapter', () => {
+    const spec = validateProviderSpec({
+      name: 'banxa',
+      kind: 'fiat',
+      module: CUSTOM_MODULE,
+      config: { apiKey: '', widgetUrl: '' },
+      endpointKeys: ['widgetUrl']
+    })
+
+    expect(spec).toEqual({
+      name: 'banxa',
+      kind: 'fiat',
+      module: CUSTOM_MODULE,
+      endpointKeys: ['widgetUrl'],
+      config: { apiKey: '', widgetUrl: '' }
+    })
+  })
+
+  it.each([
+    ['a bare string', 'widgetUrl'],
+    ['an empty entry', ['']],
+    ['a non-string entry', [1]]
+  ])('rejects endpointKeys given as %s', (_label, endpointKeys) => {
+    expect(() => validateProviderSpec({ name: 'banxa', kind: 'fiat', module: CUSTOM_MODULE, endpointKeys })).toThrow(
+      expect.objectContaining({
+        message: 'Provider spec "endpointKeys" must be an array of non-empty strings.',
+        code: 'INVALID_ARGUMENT'
+      })
+    )
+  })
+
   it('accepts a spec without config or networks', () => {
     expect(validateProviderSpec({ name: 'lifi', kind: 'swap', module: CUSTOM_MODULE })).toEqual({
       name: 'lifi',
