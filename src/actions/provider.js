@@ -14,6 +14,7 @@
 
 import {
   PROTOCOL_KINDS,
+  ADDABLE_KINDS,
   getProtocols,
   getAllProtocols,
   getProtocolsIncludingDisabled,
@@ -148,6 +149,15 @@ export function validateProviderSpec (data) {
       ErrorCode.INVALID_ARGUMENT
     )
   }
+  if (!ADDABLE_KINDS.includes(kind)) {
+    const label = kind[0].toUpperCase() + kind.slice(1)
+    throw new WdkCliError(
+      `${label} providers cannot be added.`,
+      ErrorCode.INVALID_ARGUMENT,
+      `${label} providers ship with the CLI. See the available ones with: wdk provider list`
+    )
+  }
+
   const module = obj.module
   if (typeof module !== 'string' || !module) {
     throw new WdkCliError(

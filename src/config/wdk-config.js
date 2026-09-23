@@ -54,9 +54,10 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
 
 /**
  * What a provider does: `swap` serves same-network swaps, `bridge` moves one
- * token across networks, `swidge` serves both, and `fiat` is an on/off ramp.
+ * token across networks, `swidge` serves both, `fiat` is an on/off ramp, and
+ * `pricing` is a USD price feed.
  *
- * @typedef {'swap' | 'bridge' | 'swidge' | 'fiat'} ProtocolKind
+ * @typedef {'swap' | 'bridge' | 'swidge' | 'fiat' | 'pricing'} ProtocolKind
  */
 
 /**

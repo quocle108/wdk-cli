@@ -30,7 +30,14 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  */
 
 /** Every protocol kind the registry accepts, in the order listings show them. */
-export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat'])
+export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat', 'pricing'])
+
+/**
+ * The kinds `wdk provider add` can register. Pricing providers ship with the
+ * CLI — they need CLI-side code the registry cannot supply — so they are never
+ * suggested to a user who is registering a module.
+ */
+export const ADDABLE_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat'])
 
 /**
  * The methods a protocol class must expose to serve each kind.
@@ -41,7 +48,8 @@ const KIND_METHODS = {
   swap: ['quoteSwap', 'swap'],
   bridge: ['quoteBridge', 'bridge'],
   swidge: ['quoteSwidge', 'swidge'],
-  fiat: ['quoteBuy', 'buy', 'quoteSell', 'sell']
+  fiat: ['quoteBuy', 'buy', 'quoteSell', 'sell'],
+  pricing: ['getCurrentPrice', 'getMultiCurrentPrices']
 }
 
 /**
@@ -270,7 +278,7 @@ export function assertImplementsKind (name, kind, ProtocolClass) {
   )
   if (missing.length === 0) return
 
-  const served = PROTOCOL_KINDS.filter((candidate) =>
+  const served = ADDABLE_KINDS.filter((candidate) =>
     KIND_METHODS[candidate].every((method) => typeof ProtocolClass?.prototype?.[method] === 'function')
   )
   throw new WdkCliError(
@@ -278,7 +286,7 @@ export function assertImplementsKind (name, kind, ProtocolClass) {
     ErrorCode.INVALID_ARGUMENT,
     served.length > 0
       ? `Its module implements ${served.join(' and ')}. Register it with one of those kinds.`
-      : 'Its module implements no swap, bridge, or swidge interface.'
+      : `Its module implements none of: ${ADDABLE_KINDS.join(', ')}.`
   )
 }
 

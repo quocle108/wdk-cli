@@ -15,111 +15,105 @@
 import { jest } from '@jest/globals'
 
 const USDT_ETH = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
-const DUMMY_PRICES = { tETHUSD: 2000, tUSTUSD: 1 }
+const getLastPrice = jest.fn()
+const resolvePricingProvider = jest.fn()
 
-function tickerResponse (prices) {
-  return Object.entries(prices).map(([sym, price]) => [sym, 0, 0, 0, 0, 0, 0, price, 0, 0, 0])
-}
+jest.unstable_mockModule('../../../src/services/pricing/index.js', () => ({
+  PRICING: 'pricing',
+  resolvePricingProvider
+}))
 
-const TICKERS_URL =
-  'https://api-pub.bitfinex.com/v2/tickers?symbols=tBTCUSD,tETHUSD,tUSTUSD,tXAUT:USD,tPOLUSD,tAVAX:USD,tSOLUSD,tTRXUSD'
+const { convertToUsd, getNativeUsdPrice } =
+  await import('../../../src/services/price-service.js')
 
-function makeFetchMock (prices = DUMMY_PRICES) {
-  const state = { calls: 0, urls: [] }
-  const fn = async (url) => {
-    state.calls++
-    state.urls.push(url)
-    return { ok: true, status: 200, statusText: 'OK', json: async () => tickerResponse(prices) }
-  }
-  fn.callCount = () => state.calls
-  fn.urls = state.urls
-  return fn
-}
+beforeEach(() => {
+  getLastPrice.mockReset()
+  resolvePricingProvider.mockReset()
+  resolvePricingProvider.mockResolvedValue({ name: 'bitfinex', provider: { getLastPrice } })
+})
 
-let importCounter = 0
-async function loadService () {
-  importCounter++
-  jest.resetModules()
-  return await import(`../../../src/services/price-service.js?n=${importCounter}`)
-}
+describe('convertToUsd', () => {
+  it('converts a native amount at the feed price', async () => {
+    getLastPrice.mockResolvedValue(2000)
 
-describe('price-service', () => {
-  let originalFetch
+    const usd = await convertToUsd('ethereum', 1_000_000_000_000_000_000n)
 
-  beforeEach(() => {
-    originalFetch = globalThis.fetch
+    expect(getLastPrice).toHaveBeenCalledWith('ETH', 'USD')
+    expect(usd).toBe(2000)
   })
 
-  it('converts 1 ETH to USD', async () => {
-    const fetchFn = makeFetchMock()
-    globalThis.fetch = fetchFn
-    try {
-      const { convertToUsd } = await loadService()
-      const usd = await convertToUsd('ethereum', 1_000_000_000_000_000_000n)
-      expect(usd).toBe(2000)
-      expect(fetchFn.urls).toEqual([TICKERS_URL])
-    } finally {
-      globalThis.fetch = originalFetch
-    }
+  it('converts a token amount at the feed price', async () => {
+    getLastPrice.mockResolvedValue(1)
+
+    const usd = await convertToUsd('ethereum', 1_000_000n, USDT_ETH)
+
+    expect(usd).toBe(1)
   })
 
-  it('converts 1 USDT (token) to USD', async () => {
-    globalThis.fetch = makeFetchMock()
-    try {
-      const { convertToUsd } = await loadService()
-      const usd = await convertToUsd('ethereum', 1_000_000n, USDT_ETH)
-      expect(usd).toBe(1)
-    } finally {
-      globalThis.fetch = originalFetch
-    }
+  it('rounds to two decimals above Number.MAX_SAFE_INTEGER', async () => {
+    getLastPrice.mockResolvedValue(1)
+
+    // 1.234567890123456789 ETH at $1
+    const usd = await convertToUsd('ethereum', 1_234_567_890_123_456_789n)
+
+    expect(usd).toBe(1.23)
   })
 
-  it('handles bigint above Number.MAX_SAFE_INTEGER (rounded to 2 dp)', async () => {
-    globalThis.fetch = makeFetchMock({ ...DUMMY_PRICES, tETHUSD: 1 })
-    try {
-      const { convertToUsd } = await loadService()
-      // 1.234567890123456789 ETH @ $1 → rounds to $1.23
-      const amount = 1_234_567_890_123_456_789n
-      const usd = await convertToUsd('ethereum', amount)
-      expect(usd).toBe(1.23)
-    } finally {
-      globalThis.fetch = originalFetch
-    }
+  it('rejects a token the registry does not know', async () => {
+    await expect(
+      convertToUsd('ethereum', 1n, '0x0000000000000000000000000000000000000001')
+    ).rejects.toThrow("Unknown token 0x0000000000000000000000000000000000000001 on ethereum.")
+  })
+})
+
+describe('feed symbol resolution', () => {
+  it('sends the registered slug when the feed names the token differently', async () => {
+    getLastPrice.mockResolvedValue(1)
+
+    await getNativeUsdPrice('tron')
+
+    // tron/trx carries no bitfinex slug, so the symbol is used as-is
+    expect(getLastPrice).toHaveBeenCalledWith('TRX', 'USD')
   })
 
-  it('throws for unknown token', async () => {
-    globalThis.fetch = makeFetchMock()
-    try {
-      const { convertToUsd } = await loadService()
-      await expect(
-        convertToUsd('ethereum', 1n, '0x0000000000000000000000000000000000000001')
-      ).rejects.toThrow(/Unknown token/)
-    } finally {
-      globalThis.fetch = originalFetch
-    }
+  it('sends UST for tether, which Bitfinex does not list as USDT', async () => {
+    getLastPrice.mockResolvedValue(1)
+
+    await convertToUsd('ethereum', 1_000_000n, USDT_ETH)
+
+    expect(getLastPrice).toHaveBeenCalledWith('UST', 'USD')
   })
 
-  it('caches prices across calls within TTL', async () => {
-    const fetchFn = makeFetchMock()
-    globalThis.fetch = fetchFn
-    try {
-      const { convertToUsd } = await loadService()
-      await convertToUsd('ethereum', 1_000_000_000_000_000_000n)
-      await convertToUsd('ethereum', 2_000_000_000_000_000_000n)
-      await convertToUsd('ethereum', 1_000_000n, USDT_ETH)
-      expect(fetchFn.callCount()).toBe(1)
-    } finally {
-      globalThis.fetch = originalFetch
-    }
+  it('asks the feed the token names it, not the kind', async () => {
+    getLastPrice.mockResolvedValue(1)
+    resolvePricingProvider.mockResolvedValue({ name: 'coingecko', provider: { getLastPrice } })
+
+    await convertToUsd('ethereum', 1_000_000n, USDT_ETH)
+
+    // usdt carries no coingecko slug, so the fallback sends the symbol itself
+    expect(getLastPrice).toHaveBeenCalledWith('USDT', 'USD')
+  })
+})
+
+describe('when the feed has no price', () => {
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['NaN', NaN]
+  ])('reports no price when the feed answers %s', async (_label, answer) => {
+    getLastPrice.mockResolvedValue(answer)
+
+    await expect(getNativeUsdPrice('ethereum')).rejects.toThrow(
+      expect.objectContaining({
+        message: 'No USD price available for ETH on ethereum.',
+        code: 'TOKEN_NOT_SUPPORTED'
+      })
+    )
   })
 
-  it('throws when Bitfinex API returns non-OK', async () => {
-    globalThis.fetch = async () => ({ ok: false, status: 500, statusText: 'Server Error' })
-    try {
-      const { convertToUsd } = await loadService()
-      await expect(convertToUsd('ethereum', 1n)).rejects.toThrow(/Bitfinex API error/)
-    } finally {
-      globalThis.fetch = originalFetch
-    }
+  it('surfaces a feed that is unavailable', async () => {
+    resolvePricingProvider.mockRejectedValue(new Error('No price feed is available.'))
+
+    await expect(getNativeUsdPrice('ethereum')).rejects.toThrow('No price feed is available.')
   })
 })
