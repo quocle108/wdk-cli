@@ -362,15 +362,14 @@ wdk get transaction --network ethereum --hash <txHash> --finality confirmed     
 
 Wallets are derived deterministically from your seed phrase using HD paths (BIP-84 for BTC, BIP-44 for EVM/Solana) — no local state is stored. `get address` works without a provider configured (local derivation only), while `get balance` requires a provider connection.
 
-`get history` uses the [WDK Indexer API](https://github.com/tetherto/wdk-indexer-http), an entry of the `providers` registry with `kind: indexer` (see [Provider](#provider)). It is configured like any other provider, and `wdk provider disable --name wdk-indexer` turns `get history` off:
+`get history` is served by [`@tetherto/wdk-indexer-http`](https://github.com/tetherto/wdk-indexer-http), an entry of the `providers` registry with `kind: indexer` (see [Provider](#provider)). `wdk provider disable --name wdk-indexer` turns `get history` off.
+
+Its `config` goes to the client untouched, so any option the client takes can be set:
 
 ```bash
 wdk config set --key providers.wdk-indexer.config.baseUrl --value <url>
 wdk config set --key providers.wdk-indexer.config.apiKey --value <key>
 ```
-
-Both are required. A proxy that supplies its own key still needs a value here —
-the client rejects an empty one ([issue](https://github.com/tetherto/wdk-indexer-http/issues/6)).
 
 `get transaction` returns a normalized receipt (`finality`: `pending` | `confirmed` | `final` | `dropped`, plus `success`, `block`, `fee`). Pass `--finality confirmed|final` to block until the target is reached; `--timeout <ms>` caps the wait.
 
