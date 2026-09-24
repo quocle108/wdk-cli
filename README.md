@@ -369,7 +369,7 @@ wdk swap --network ethereum --from-token usdt --to-token eth --amount-in 100 --p
 
 `wdk swap` exchanges one token for another (add `--to-network` to swap across chains); `wdk bridge` moves the *same* token to another chain (single `--token`, exact-in `--amount`). Both are **best-route**: every installed protocol capable of the request is quoted and the best quote wins (highest output for exact-in, lowest input for `--amount-out`) — pass `--protocol <name>` to force one. Use `--dry-run` to preview the route, amounts, and skipped protocols without executing.
 
-Protocols come from the `providers` registry in `wdk.config.json`. Each entry names the module that implements it and declares its `kind` — `swap` (same network), `bridge` (same token, another network), or `swidge` (both) — and that declaration is what decides which protocols a request quotes: `wdk swap` quotes the `swap` and `swidge` entries, `wdk bridge` the `bridge` and `swidge` ones. Add more with `wdk module add`.
+Protocols come from the `providers` registry in `wdk.config.json`. Each entry names the module that implements it and declares its `kind` — for routing, `swap` (same network), `bridge` (same token, another network), or `swidge` (both) — and that declaration is what decides which protocols a request quotes: `wdk swap` quotes the `swap` and `swidge` entries, `wdk bridge` the `bridge` and `swidge` ones. Add more with `wdk module add`.
 
 ### Method
 
@@ -485,7 +485,7 @@ wdk provider enable --name rhinofi
 
 A **provider** is a named, configured use of a protocol module: `velora` is the swap protocol backed by `@tetherto/wdk-protocol-swap-velora-evm`. The packaged ones live in the `providers` registry of `wdk.config.json`; your own are stored in user config and merged after them.
 
-Each entry declares a `kind` — `swap`, `bridge`, or `swidge`, which serves both — and that declaration is what decides which requests quote it. `wdk swap` quotes the `swap` and `swidge` providers, `wdk bridge` the `bridge` and `swidge` ones, all without importing a module first.
+Each entry declares a `kind` — `swap`, `bridge`, `swidge`, or `fiat` — and that declaration is what decides which requests reach it. `wdk swap` quotes the `swap` and `swidge` providers, `wdk bridge` the `bridge` and `swidge` ones, and `wdk buy` / `wdk sell` use the `fiat` ones, all without importing a module first.
 
 To register your own, install the package with `wdk module add`, then name it in a spec:
 

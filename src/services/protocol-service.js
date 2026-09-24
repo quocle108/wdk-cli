@@ -138,9 +138,9 @@ export function isCustomProtocol (name) {
 }
 
 /**
- * Returns the registered protocols whose declared kind can serve a request
- * kind: swap and swidge protocols for a swap, bridge and swidge for a bridge.
- * Decided from the registry alone, so no module is imported.
+ * Returns the registered protocols whose declared kind can serve the given
+ * request kind: `swap` and `swidge` entries serve a swap, `bridge` and `swidge`
+ * a bridge. Decided from the registry alone, so no module is imported.
  *
  * @param {'swap' | 'bridge'} requestKind - Whether the caller needs a same-network swap or a cross-network bridge.
  * @returns {Record<string, WdkProtocolEntry>} Protocol entries keyed by short name.
