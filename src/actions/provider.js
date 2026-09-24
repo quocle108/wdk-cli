@@ -284,6 +284,7 @@ export function getProviderInfo (name) {
 export function addProvider (spec) {
   /** @type {WdkProtocolEntry} */
   const entry = { kind: spec.kind, module: spec.module }
+  if (spec.endpointKeys) entry.endpointKeys = spec.endpointKeys
   if (spec.config) entry.config = spec.config
   if (spec.networks) entry.networks = spec.networks
   saveCustomProvider(spec.name, entry)

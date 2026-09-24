@@ -386,6 +386,27 @@ describe('addProvider', () => {
     expect(result).toEqual({ name: 'lifi', kind: 'swidge', module: CUSTOM_MODULE, added: true })
   })
 
+  it('persists endpointKeys, so the module receives a callback and not a string', () => {
+    withConfig({})
+
+    addProvider({
+      name: 'banxa',
+      kind: 'fiat',
+      module: CUSTOM_MODULE,
+      endpointKeys: ['widgetUrl'],
+      config: { apiKey: '', widgetUrl: '' }
+    })
+
+    expect(setConfig).toHaveBeenCalledWith('customProviders', {
+      banxa: {
+        kind: 'fiat',
+        module: CUSTOM_MODULE,
+        endpointKeys: ['widgetUrl'],
+        config: { apiKey: '', widgetUrl: '' }
+      }
+    })
+  })
+
   it('keeps existing custom providers', () => {
     withConfig({ customProviders: { other: { kind: 'swap', module: CUSTOM_MODULE } } })
 

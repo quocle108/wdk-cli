@@ -89,7 +89,7 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  */
 
 /** The registry kind an on/off-ramp provider declares. */
-export const FIAT = 'fiat'
+const FIAT = 'fiat'
 
 /**
  * Constructed modules, keyed by provider and network, held with the class they
@@ -126,7 +126,7 @@ function endpointKeys (name) {
  * @throws {WdkCliError} SIGN_FAILED when the endpoint is unreachable.
  * @throws {WdkCliError} SIGN_FAILED when it answers with a non-OK status.
  */
-export async function postToEndpoint (endpoint, payload) {
+async function postToEndpoint (endpoint, payload) {
   const body = typeof payload === 'string' ? { urlForSignature: payload } : payload
   let response
   try {
@@ -193,7 +193,7 @@ export function buildModuleConfig (name, network) {
  * @returns {Promise<FiatProtocol>} The constructed protocol.
  * @throws {WdkCliError} UNSUPPORTED_MODULE when the module is not registered or not installed.
  */
-export async function getRampProtocol (name, network) {
+async function getRampProtocol (name, network) {
   const key = `${name}/${network}`
   const ProtocolClass = /** @type {FiatProtocolConstructor} */ (
     /** @type {unknown} */ (await loadProtocolClass(getProtocol(name).module))

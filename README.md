@@ -469,7 +469,7 @@ wdk config set --key providers.moonpay.config.apiKey --value <key>    # also sig
 wdk provider info --name moonpay                                      # what the module receives
 ```
 
-The pre-registry `ramp.moonpay.*` keys are still read when the new ones are unset, so existing setups keep working. They are deprecated; move them with the commands above.
+The pre-registry `ramp.moonpay.*` keys are **no longer read**. An existing setup must be moved to `providers.moonpay.config.*` with the commands above, or the provider comes back unconfigured.
 
 ### Provider
 
@@ -492,10 +492,11 @@ To register your own, install the package with `wdk module add`, then name it in
 | Field | Required | Meaning |
 |---|---|---|
 | `name` | Yes | Short name used by `--protocol`. Lowercase alphanumeric with hyphens, and not one already registered. |
-| `kind` | Yes | `swap`, `bridge`, or `swidge`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. |
+| `kind` | Yes | `swap`, `bridge`, `swidge`, or `fiat`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. |
 | `module` | Yes | The package backing it. Must already be registered, built-in or added with `wdk module add`. |
 | `config` | No | Settings applied on every network, such as an API key. |
 | `networks` | No | Per-network settings keyed by network name, shallow-merged over `config`. |
+| `endpointKeys` | No | Config keys the module takes as a **callback** rather than a value (fiat providers that mint a widget URL on your backend). The CLI stores a URL for each and POSTs to it when the module calls back. |
 
 Because the module runs inside the wallet daemon, adding, deleting or toggling a provider requires the default wallet's passphrase and locks the wallets, the same as `module add`. Disabling follows the rule the other registries use: a disabled provider keeps showing in `provider list` with a `disabled` status so you can find it again, a provider hidden by its disabled module drops out of the listing and cannot be toggled until the module is back, and deleting your own provider also drops any override it had.
 
@@ -687,8 +688,8 @@ Setup auto-detects the Node.js path, validates the MCP server, and writes the co
 | `get_balance` | `network?`, `token?`, `index?`, `testnet?`, `wallet?` | Get balance with USD values (omit network for all). `token` is a registered ticker. |
 | `get_history` | `network`, `token?`, `limit?`, `index?`, `fromDate?`, `toDate?`, `wallet?` | Transaction history (requires indexer API) |
 | `send_token` | `to`, `amount`, `baseUnits?`, `network`, `token?`, `index?`, `dryRun?`, `wallet?` | Send tokens. `amount` is decimal by default; set `baseUnits=true` to interpret as base units. Returns dry-run preview by default; set `dryRun=false` to execute |
-| `buy_crypto` | `network`, `token`, `fiatCurrency?`, `fiatAmount?`, `cryptoAmount?`, `index?`, `wallet?` | Buy crypto with fiat. Returns a signed MoonPay URL. |
-| `sell_crypto` | `network`, `token`, `fiatCurrency?`, `fiatAmount?`, `cryptoAmount?`, `index?`, `wallet?` | Sell crypto for fiat. Returns a signed MoonPay URL. |
+| `buy_crypto` | `network`, `token`, `fiatCurrency?`, `fiatAmount?`, `cryptoAmount?`, `provider?`, `index?`, `wallet?` | Buy crypto with fiat. Returns the provider's URL. `provider` is required while more than one fiat provider is enabled. |
+| `sell_crypto` | `network`, `token`, `fiatCurrency?`, `fiatAmount?`, `cryptoAmount?`, `provider?`, `index?`, `wallet?` | Sell crypto for fiat. Returns the provider's URL. `provider` is required while more than one fiat provider is enabled. |
 | `list_methods` | `network?` | List a wallet module's chain-specific methods (omit network for all modules). Each entry includes its kind (read/write) and parameter schema. |
 | `call_method` | `network`, `name`, `args?`, `index?`, `wallet?` | Invoke a declared module method. `args` maps parameter names to string values, using the declared camelCase name — `{"maxFee": "1000"}`, not the CLI flag `--max-fee`. A structured parameter's value is a JSON-encoded string. |
 
