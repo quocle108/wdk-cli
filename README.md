@@ -369,7 +369,8 @@ wdk config set --key providers.wdk-indexer.config.baseUrl --value <url>
 wdk config set --key providers.wdk-indexer.config.apiKey --value <key>
 ```
 
-If using a proxy provider that includes the API key, only the base URL is needed.
+Both are required. A proxy that supplies its own key still needs a value here —
+the client rejects an empty one ([issue](https://github.com/tetherto/wdk-indexer-http/issues/6)).
 
 `get transaction` returns a normalized receipt (`finality`: `pending` | `confirmed` | `final` | `dropped`, plus `success`, `block`, `fee`). Pass `--finality confirmed|final` to block until the target is reached; `--timeout <ms>` caps the wait.
 

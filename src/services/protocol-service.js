@@ -30,8 +30,13 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  */
 
 /** Every protocol kind the registry accepts, in the order listings show them. */
-/** Kinds the CLI resolves by kind, so only one of each may be enabled. */
-const SINGLE_INSTANCE_KINDS = /** @type {readonly ProtocolKind[]} */ (['pricing', 'indexer'])
+/**
+ * Kinds the CLI resolves by kind, so only one of each may be enabled, mapped to
+ * how an error names one.
+ *
+ * @type {Partial<Record<ProtocolKind, string>>}
+ */
+const SINGLE_INSTANCE_LABELS = { pricing: 'A price feed', indexer: 'An indexer' }
 
 export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat', 'pricing', 'indexer'])
 
@@ -481,11 +486,12 @@ function otherEnabledOfKind (kind, name) {
  * @throws {WdkCliError} INVALID_ARGUMENT when another provider of that kind is enabled.
  */
 export function assertSingleInstanceKind (kind, name) {
-  if (!SINGLE_INSTANCE_KINDS.includes(kind)) return
+  const label = SINGLE_INSTANCE_LABELS[kind]
+  if (!label) return
   const [active] = otherEnabledOfKind(kind, name)
   if (!active) return
   throw new WdkCliError(
-    `A ${kind === 'pricing' ? 'price feed' : kind} is already enabled: ${active}.`,
+    `${label} is already enabled: ${active}.`,
     ErrorCode.INVALID_ARGUMENT,
     `Only one runs at a time. Disable it first with: wdk provider disable --name ${active}`
   )
