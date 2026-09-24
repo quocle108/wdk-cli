@@ -131,9 +131,8 @@ describe('indexer endpoint configuration', () => {
       expect.objectContaining({
         message: 'Indexer is not configured: API key is required',
         code: 'MISSING_CONFIG',
-        suggestion: 'Check and update the indexer config:\n' +
-          '  wdk config set --key providers.wdk-indexer.config.apiKey --value <your-api-key>\n' +
-          '  wdk config set --key providers.wdk-indexer.config.baseUrl --value <your-proxy-url>'
+        suggestion: 'Check its config, then update with: ' +
+          'wdk config set --key providers.wdk-indexer.config.<setting> --value <value>'
       })
     )
   })
@@ -157,11 +156,10 @@ describe('indexer endpoint configuration', () => {
 
     await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
       expect.objectContaining({
-        message: 'Indexer API error: 403 Forbidden.',
+        message: 'Indexer API error: 403 Forbidden. The configured API key was rejected.',
         code: 'NETWORK_ERROR',
-        suggestion: 'Check and update the indexer config:\n' +
-          '  wdk config set --key providers.myidx.config.apiKey --value <your-api-key>\n' +
-          '  wdk config set --key providers.myidx.config.baseUrl --value <your-proxy-url>'
+        suggestion: 'Check its config, then update with: ' +
+          'wdk config set --key providers.myidx.config.<setting> --value <value>'
       })
     )
   })
@@ -183,7 +181,7 @@ describe('indexer endpoint configuration', () => {
 
     await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
       expect.objectContaining({
-        message: 'Indexer API error: 403 Forbidden.',
+        message: 'Indexer API error: 403 Forbidden. The configured API key was rejected.',
         code: 'NETWORK_ERROR'
       })
     )

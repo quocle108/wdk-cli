@@ -82,12 +82,14 @@ function indexerClient () {
  */
 function apiError (error, name) {
   const hint =
-    'Check and update the indexer config:\n' +
-    `  wdk config set --key providers.${name}.config.apiKey --value <your-api-key>\n` +
-    `  wdk config set --key providers.${name}.config.baseUrl --value <your-proxy-url>`
+    `Check its config, then update with: wdk config set --key providers.${name}.config.<setting> --value <value>`
 
   if (error instanceof WdkIndexerApiError && error.status === 403) {
-    return new WdkCliError('Indexer API error: 403 Forbidden.', ErrorCode.NETWORK_ERROR, hint)
+    return new WdkCliError(
+      'Indexer API error: 403 Forbidden. The configured API key was rejected.',
+      ErrorCode.NETWORK_ERROR,
+      hint
+    )
   }
   const message = error instanceof Error ? error.message : String(error)
   // Matched by name: these are exported at runtime but absent from the .d.ts.
@@ -95,7 +97,11 @@ function apiError (error, name) {
     return new WdkCliError(message, ErrorCode.NETWORK_NOT_SUPPORTED)
   }
   if (error instanceof Error && error.name === 'WdkIndexerError') {
-    return new WdkCliError(`Indexer is not configured: ${message}`, ErrorCode.MISSING_CONFIG, hint)
+    return new WdkCliError(
+      `Indexer is not configured: ${message}`,
+      ErrorCode.MISSING_CONFIG,
+      hint
+    )
   }
   return new WdkCliError(`Indexer API error: ${message}`, ErrorCode.NETWORK_ERROR)
 }
