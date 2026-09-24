@@ -392,6 +392,19 @@ describe('provider enable and disable', () => {
     )
   })
 
+  it('refuses to enable a second indexer', () => {
+    store.customProviders = { myidx: { kind: 'indexer', config: {} } }
+    store.overrides = { providers: { myidx: { enabled: false } } }
+
+    expect(() => setProviderEnabled('myidx', true)).toThrow(
+      expect.objectContaining({
+        message: 'An indexer is already enabled: wdk-indexer.',
+        code: 'INVALID_ARGUMENT',
+        suggestion: 'Only one runs at a time. Disable it first with: wdk provider disable --name wdk-indexer'
+      })
+    )
+  })
+
   it('enables a price feed when it is the only one', () => {
     store.overrides = { providers: { bitfinex: { enabled: false } } }
 

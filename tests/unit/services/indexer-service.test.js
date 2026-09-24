@@ -106,6 +106,11 @@ describe('indexer endpoint configuration', () => {
   })
 
   it('calls the packaged base URL from the registry entry', async () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'providers.wdk-indexer.config'
+        ? { baseUrl: 'https://wdk-api.tether.io', apiKey: 'dummy-key' }
+        : undefined
+    )
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
       /** @type {Response} */ ({ ok: true, json: async () => ({ transfers: [] }) })
     )
@@ -117,23 +122,117 @@ describe('indexer endpoint configuration', () => {
     )
   })
 
-  it('reports an unset base URL against the provider config key', async () => {
+  it('reports a missing API key against the provider config key', async () => {
     jest.spyOn(configService, 'get').mockImplementation((key) =>
-      key === 'providers.wdk-indexer.config' ? { baseUrl: '' } : undefined
+      key === 'providers.wdk-indexer.config' ? { baseUrl: 'https://dummy-indexer.test' } : undefined
     )
 
     await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
       expect.objectContaining({
-        message: 'Indexer base URL not configured.',
+        message: 'Indexer is not configured: API key is required',
         code: 'MISSING_CONFIG',
-        suggestion: 'Set it with: wdk config set --key providers.wdk-indexer.config.baseUrl --value <url>'
+        suggestion: 'Check and update the indexer config:\n' +
+          '  wdk config set --key providers.wdk-indexer.config.apiKey --value <your-api-key>\n' +
+          '  wdk config set --key providers.wdk-indexer.config.baseUrl --value <your-proxy-url>'
       })
+    )
+  })
+
+  it('answers a 403 with the config keys of the provider actually in use', async () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'customProviders'
+        ? { myidx: { kind: 'indexer', config: { baseUrl: 'https://dummy-indexer.test', apiKey: 'dummy-key' } } }
+        : key === 'overrides'
+          ? { providers: { 'wdk-indexer': { enabled: false } } }
+          : undefined
+    )
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      /** @type {Response} */ ({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        json: async () => ({ error: 'Forbidden', message: 'Invalid API key', status: 403 })
+      })
+    )
+
+    await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
+      expect.objectContaining({
+        message: 'Indexer API error: 403 Forbidden.',
+        code: 'NETWORK_ERROR',
+        suggestion: 'Check and update the indexer config:\n' +
+          '  wdk config set --key providers.myidx.config.apiKey --value <your-api-key>\n' +
+          '  wdk config set --key providers.myidx.config.baseUrl --value <your-proxy-url>'
+      })
+    )
+  })
+
+  it('says the key was rejected when one is configured', async () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'providers.wdk-indexer.config'
+        ? { baseUrl: 'https://wdk-api.tether.io', apiKey: 'dummy-key' }
+        : undefined
+    )
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      /** @type {Response} */ ({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        json: async () => ({ error: 'Forbidden', message: 'Invalid API key', status: 403 })
+      })
+    )
+
+    await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
+      expect.objectContaining({
+        message: 'Indexer API error: 403 Forbidden.',
+        code: 'NETWORK_ERROR'
+      })
+    )
+  })
+
+  it('passes a non-403 rejection through with its status', async () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'providers.wdk-indexer.config'
+        ? { baseUrl: 'https://wdk-api.tether.io', apiKey: 'dummy-key' }
+        : undefined
+    )
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+      /** @type {Response} */ ({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        json: async () => ({})
+      })
+    )
+
+    await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
+      'Indexer API error: HTTP 503: Service Unavailable'
+    )
+  })
+
+  it('passes every configured option through to the client, not just the two it reads', async () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'providers.wdk-indexer.config'
+        ? { baseUrl: 'https://dummy-indexer.test', apiKey: 'dummy-key', timeout: 50 }
+        : undefined
+    )
+    jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () =>
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+        )
+      })
+    )
+
+    await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
+      'Indexer API error: Request timed out after 50ms'
     )
   })
 
   it('uses a configured proxy base URL instead', async () => {
     jest.spyOn(configService, 'get').mockImplementation((key) =>
-      key === 'providers.wdk-indexer.config' ? { baseUrl: 'https://proxy.dummy-host.test' } : undefined
+      key === 'providers.wdk-indexer.config'
+        ? { baseUrl: 'https://proxy.dummy-host.test', apiKey: 'dummy-key' }
+        : undefined
     )
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
       /** @type {Response} */ ({ ok: true, json: async () => ({ transfers: [] }) })
