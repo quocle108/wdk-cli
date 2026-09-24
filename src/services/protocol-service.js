@@ -30,7 +30,7 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  */
 
 /** Every protocol kind the registry accepts, in the order listings show them. */
-export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge'])
+export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat'])
 
 /**
  * The methods a protocol class must expose to serve each kind.
@@ -40,7 +40,8 @@ export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', '
 const KIND_METHODS = {
   swap: ['quoteSwap', 'swap'],
   bridge: ['quoteBridge', 'bridge'],
-  swidge: ['quoteSwidge', 'swidge']
+  swidge: ['quoteSwidge', 'swidge'],
+  fiat: ['quoteBuy', 'buy', 'quoteSell', 'sell']
 }
 
 /**
@@ -137,9 +138,9 @@ export function isCustomProtocol (name) {
 }
 
 /**
- * Returns the registered protocols whose declared kind can serve a request
- * kind: swap and swidge protocols for a swap, bridge and swidge for a bridge.
- * Decided from the registry alone, so no module is imported.
+ * Returns the registered protocols whose declared kind can serve the given
+ * request kind: `swap` and `swidge` entries serve a swap, `bridge` and `swidge`
+ * a bridge. Decided from the registry alone, so no module is imported.
  *
  * @param {'swap' | 'bridge'} requestKind - Whether the caller needs a same-network swap or a cross-network bridge.
  * @returns {Record<string, WdkProtocolEntry>} Protocol entries keyed by short name.

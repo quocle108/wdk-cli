@@ -82,6 +82,11 @@ describe('getProtocolsByKind', () => {
   it('returns bridge and swidge protocols for a bridge request', () => {
     expect(Object.keys(getProtocolsByKind('bridge'))).toEqual(['usdt0', 'rhinofi', 'symbiosis'])
   })
+
+  it('never routes a fiat provider to swap or bridge', () => {
+    expect(Object.keys(getProtocolsByKind('swap'))).not.toContain('moonpay')
+    expect(Object.keys(getProtocolsByKind('bridge'))).not.toContain('moonpay')
+  })
 })
 
 describe('getProtocol', () => {
@@ -224,6 +229,18 @@ describe('assertImplementsKind', () => {
         message: "Provider 'lifi' is declared swap, but its module does not implement quoteSwap and swap.",
         suggestion: 'Its module implements bridge. Register it with one of those kinds.'
       })
+    )
+  })
+
+  it('accepts a class implementing the declared kind fiat', () => {
+    const fiat = classWith('quoteBuy', 'buy', 'quoteSell', 'sell')
+
+    expect(() => assertImplementsKind('moonpay', 'fiat', fiat)).not.toThrow()
+  })
+
+  it('refuses a swap class declared fiat', () => {
+    expect(() => assertImplementsKind('x', 'fiat', classWith('quoteSwap', 'swap'))).toThrow(
+      "Provider 'x' is declared fiat, but its module does not implement quoteBuy and buy and quoteSell and sell."
     )
   })
 

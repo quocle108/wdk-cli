@@ -15,6 +15,8 @@
 import { configService } from './config-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
+/** @typedef {import('../config/wdk-tokens.js').TokenMetadata} TokenMetadata */
+
 /** @typedef {'modules' | 'networks' | 'tokens' | 'providers'} OverrideKind */
 
 /**
@@ -22,6 +24,8 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  * @property {boolean} [enabled] - False when the built-in entry is disabled.
  * @property {string} [version] - Version replacing a module's built-in pin.
  * @property {string} [module] - Package replacing a network's wallet module.
+ * @property {TokenMetadata} [metadata] - Token metadata deltas, merged per system over the
+ *   entry's own `metadata.slugs`.
  */
 
 /**

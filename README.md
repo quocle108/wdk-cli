@@ -53,10 +53,10 @@ A multi-chain crypto wallet for AI agents, built on [Wallet Development Kit (WDK
 
 - **Wallet** — Multiple named wallets with per-wallet passphrases and BIP-39 seed phrases, encrypted at rest with AES-256-GCM. Background daemon holds keys in memory after unlock, with per-wallet TTL
 - **Network** — Bitcoin, Ethereum, Polygon, Arbitrum, Base, BSC, Avalanche, Solana, Tron, Spark, Smart Account (ERC-4337) + testnets. Add custom networks with `network create`
-- **Token** — Built-in registry of tokens per network (symbol, decimals, address, indexer/MoonPay/Bitfinex mappings). Add your own with `token add`
+- **Token** — Built-in registry of tokens per network (symbol, decimals, address, indexer/MoonPay/Transak/Bitfinex mappings). Add your own with `token add`
 - **Get** — Derive wallet addresses, check balances, and view transaction history across all networks
 - **Send** — Native and token transfers with fee estimation and dry-run preview. Decimal amounts by default
-- **Buy/Sell** — On/off ramp via MoonPay (buy crypto with fiat, sell crypto for fiat)
+- **Buy/Sell** — On/off ramp via MoonPay or Transak (buy crypto with fiat, sell crypto for fiat)
 - **Config** — Per-network configuration with env var overrides
 
 ## Requirements
@@ -203,7 +203,7 @@ Example spec file:
       "symbol": "ETH",
       "decimals": 18,
       "isNative": true,
-      "metadata": { "moonpaySlug": "eth", "bitfinexSlug": "tETHUSD" }
+      "metadata": { "slugs": { "moonpay": "eth", "bitfinex": "tETHUSD" } }
     },
     {
       "token": "usdt",
@@ -211,7 +211,7 @@ Example spec file:
       "decimals": 6,
       "isNative": false,
       "address": "0x...",
-      "metadata": { "indexerSlug": "usdt", "moonpaySlug": "usdt", "bitfinexSlug": "tUSTUSD" }
+      "metadata": { "slugs": { "indexer": "usdt", "moonpay": "usdt", "bitfinex": "tUSTUSD" } }
     }
   ]
 }
@@ -263,11 +263,31 @@ wdk token enable --network <n> --token <t>                     # Bring it back
 | `decimals` | Yes | Used to convert between the CLI's decimal `--amount` (e.g. `1.5`) and the SDK's base units (wei / satoshi / lamport). Integer 0–24. |
 | `isNative` | Yes | Routes transfers through the native-coin path (no contract call) vs the token-contract path. Each network can have **at most one** native entry. |
 | `address` | If `!isNative` | Contract / mint address used by the SDK to call `transfer` / `getBalance` on the right token. Required for ERC-20 / SPL / TRC-20; omit for native. |
-| `metadata.indexerSlug` | No | Asset slug sent to the WDK indexer (`/api/v1/{chain}/{indexerSlug}/{addr}/token-transfers`). Without it, this token is skipped by `wdk get history`. **Requires the network to also have `indexerSlug` set** — a token slug alone doesn't enable the indexer; the network's `indexerSlug` is what tells the CLI the indexer is available for that chain. |
-| `metadata.moonpaySlug` | No | MoonPay asset code used in the buy/sell URL. Without it, `wdk buy`/`wdk sell` rejects the token. |
-| `metadata.bitfinexSlug` | No | Bitfinex pair symbol used to fetch a USD price. Without it, `wdk get balance` shows the balance but no USD column for that token. |
+| `metadata.slugs` | No | How external systems name this token, keyed by system. Each value is a slug string, or an object carrying `slug` plus the extra fields that system's API takes with it. |
+| `metadata.slugs.indexer` | No | Token slug sent to the WDK indexer (`/api/v1/{chain}/{indexerSlug}/{slug}/{addr}/token-transfers`). Without it, this token is skipped by `wdk get history`. **Requires the network to also have `indexerSlug` set** — a token slug alone doesn't enable the indexer; the network's `indexerSlug` is what tells the CLI the indexer is available for that chain. |
+| `metadata.slugs.moonpay` | No | MoonPay asset code used in the buy/sell URL. Without it, `wdk buy`/`wdk sell` rejects the token. |
+| `metadata.slugs.bitfinex` | No | Bitfinex pair symbol used to fetch a USD price. Without it, `wdk get balance` shows the balance but no USD column for that token. |
 
-Provider mappings (`metadata.*Slug`) are all optional. Omit them when the integration doesn't apply — the rest of the CLI keeps working; only the specific feature is disabled for that token. Unknown top-level fields pass through silently so you can annotate entries with comments, tags, owner, etc.
+Every entry under `metadata.slugs` is optional. Omit a system when the integration doesn't apply — the rest of the CLI keeps working; only that feature is disabled for the token. The block grows by key, so a newly registered provider needs no schema change: `{"slugs":{"transak":{"slug":"USDT","network":"tron"}}}`. Unknown fields *beside* `slugs` are rejected, so a mistyped mapping fails loudly instead of being dropped. Unknown top-level fields (outside `metadata`) still pass through silently so you can annotate entries with comments, tags, owner, etc.
+
+**What a slug becomes.** The key always means the same thing — *what that system calls this token* — but each consumer uses it in its own idiom, and the CLI never interprets the value:
+
+| system | the slug becomes |
+| --- | --- |
+| `indexer` | the token segment of the indexer URL |
+| `bitfinex` | the trading-pair symbol queried for the USD price |
+| a fiat provider | `cryptoAsset` in the SDK's `quoteBuy` / `buy` / `quoteSell` / `sell` calls |
+
+That is why `usdt`, `tUSTUSD` and `usdt_trx` can all be correct for the same token: three systems, three names.
+
+For a fiat provider the object form splits in two — `slug` fills the contract's required `cryptoAsset`, and **every other key is forwarded verbatim** as the call's `config` bag, which the CLI neither validates nor understands:
+
+```jsonc
+"transak": { "slug": "USDT", "network": "tron" }
+// → quoteBuy({ cryptoAsset: "USDT", fiatCurrency: "usd", config: { network: "tron" } })
+```
+
+This is what lets a new fiat provider be added as data: whatever extra fields it takes, write them beside `slug` and they reach it untouched. There is deliberately **no fallback** — the CLI never guesses a slug from the token symbol, because a plausible guess can name a real asset on the wrong chain.
 
 Example full entry (file or inline):
 
@@ -280,9 +300,11 @@ Example full entry (file or inline):
   "isNative": false,
   "address": "0x...",
   "metadata": {
-    "indexerSlug": "usdt",
-    "moonpaySlug": "usdt",
-    "bitfinexSlug": "tUSTUSD"
+    "slugs": {
+      "indexer": "usdt",
+      "moonpay": "usdt",
+      "bitfinex": "tUSTUSD"
+    }
   }
 }
 ```
@@ -347,7 +369,7 @@ wdk swap --network ethereum --from-token usdt --to-token eth --amount-in 100 --p
 
 `wdk swap` exchanges one token for another (add `--to-network` to swap across chains); `wdk bridge` moves the *same* token to another chain (single `--token`, exact-in `--amount`). Both are **best-route**: every installed protocol capable of the request is quoted and the best quote wins (highest output for exact-in, lowest input for `--amount-out`) — pass `--protocol <name>` to force one. Use `--dry-run` to preview the route, amounts, and skipped protocols without executing.
 
-Protocols come from the `providers` registry in `wdk.config.json`. Each entry names the module that implements it and declares its `kind` — `swap` (same network), `bridge` (same token, another network), or `swidge` (both) — and that declaration is what decides which protocols a request quotes: `wdk swap` quotes the `swap` and `swidge` entries, `wdk bridge` the `bridge` and `swidge` ones. Add more with `wdk module add`.
+Protocols come from the `providers` registry in `wdk.config.json`. Each entry names the module that implements it and declares its `kind` — for routing, `swap` (same network), `bridge` (same token, another network), or `swidge` (both) — and that declaration is what decides which protocols a request quotes: `wdk swap` quotes the `swap` and `swidge` entries, `wdk bridge` the `bridge` and `swidge` ones. Add more with `wdk module add`.
 
 ### Method
 
@@ -366,23 +388,25 @@ Wallet modules expose chain-specific methods beyond the generic interface (addre
 
 ```bash
 # Buy crypto with fiat
-wdk buy --network ethereum --token usdt                          # Opens MoonPay widget
-wdk buy --network ethereum --token eth --fiat-amount 100         # Buy $100 of ETH
-wdk buy --network bitcoin --token btc --crypto-amount 0.05       # Buy 0.05 BTC
+wdk buy --network ethereum --token eth --fiat-amount 100 --provider moonpay
+wdk buy --network bitcoin --token btc --crypto-amount 0.05 --provider transak
 
 # Sell crypto for fiat
-wdk sell --network ethereum --token usdt                         # Opens MoonPay sell widget
-wdk sell --network ethereum --token eth --fiat-amount 200        # Sell ETH for $200
-wdk sell --network polygon --token usdt --crypto-amount 50       # Sell 50 USDT on Polygon
+wdk sell --network ethereum --token eth --fiat-amount 200 --provider moonpay
+wdk sell --network tron --token usdt --crypto-amount 50 --provider transak
 ```
 
-Uses MoonPay as the fiat provider. All three config values are required:
+Fiat providers come from the provider registry, like swap and bridge, and can be added with `wdk provider add`. **MoonPay and Transak both ship enabled**, so `--provider` is required until you disable one. Configure whichever you use:
 
 ```bash
-wdk config set --key ramp.moonpay.apiKey --value <your-publishable-key>
-wdk config set --key ramp.moonpay.signUrl --value <your-sign-url>
-wdk config set --key ramp.moonpay.environment --value sandbox    # or production
+wdk config set --key providers.moonpay.config.apiKey --value <your-publishable-key>
+wdk config set --key providers.moonpay.config.signUrl --value <your-sign-url>
+wdk config set --key providers.moonpay.config.environment --value sandbox    # or production
+
+wdk provider disable --name transak     # or just turn one off
 ```
+
+`signUrl` is an endpoint the CLI POSTs to, not a value passed on: these providers mint their widget URL on your backend, where the API secret lives.
 
 **Options:**
 
@@ -390,14 +414,62 @@ wdk config set --key ramp.moonpay.environment --value sandbox    # or production
 |------|-------------|
 | `--network <network>` | Blockchain network (required) |
 | `--token <token>` | Crypto asset code, e.g. `usdt`, `eth`, `btc` (required) |
-| `--module <module>` | Fiat provider (default: `moonpay`) |
+| `--provider <name>` | Fiat provider; required while more than one is enabled |
 | `--fiat-currency <currency>` | Fiat currency code (default: `usd`) |
 | `--fiat-amount <value>` | Fiat amount (mutually exclusive with `--crypto-amount`) |
 | `--crypto-amount <value>` | Crypto amount (mutually exclusive with `--fiat-amount`) |
 
-Supported tokens are derived from the registry — any token with `metadata.moonpaySlug` set in `wdk.tokens.json` (or a custom token added via `wdk token add`). Environment validation prevents using production MoonPay with testnet networks (and vice versa).
+Supported tokens are whatever the provider has a mapping for — `metadata.slugs.<provider>` in `wdk.tokens.json`, or on a custom token added via `wdk token add`. There is no fallback: an unmapped token is an error naming the tokens that provider does carry, never a guess from the symbol.
 
-Configure via `wdk config set --key ramp.moonpay.apiKey --value <key>`, `ramp.moonpay.signUrl`, and `ramp.moonpay.environment`.
+### Adding another fiat provider
+
+Every fiat module implements WDK's `FiatProtocol`, so adding one needs no CLI
+code. Register it like any other provider:
+
+```bash
+wdk module add --name @banxa/wdk-protocol-fiat-banxa
+wdk provider add '{"name":"banxa","kind":"fiat","module":"@banxa/wdk-protocol-fiat-banxa",
+                   "config":{"apiKey":"","widgetUrl":""},"endpointKeys":["widgetUrl"]}'
+wdk config set --key overrides.tokens.ethereum/usdt.metadata.slugs.banxa --value '{"slug":"USDT","network":"ethereum"}'
+```
+
+`endpointKeys` names the config keys the module takes as a **callback** rather
+than a value. The CLI stores a URL for each and POSTs to it when the module
+calls back — that is how a provider that mints its widget URL on your backend
+is configured without writing code.
+
+A provider that ships with the CLI is the same shape, declared in
+`wdk.config.json` instead:
+
+```jsonc
+"transak": {
+  "kind": "fiat",
+  "module": "@transak/wdk-protocol-fiat-transak",
+  "config": { "apiKey": "", "widgetUrl": "", "getOrder": "", "environment": "" },
+  "endpointKeys": ["widgetUrl", "getOrder"]
+}
+```
+
+Users then configure and toggle it like any other provider:
+
+```bash
+wdk provider list
+wdk config set --key providers.<name>.config.apiKey --value <key>
+wdk provider disable --name <name>
+wdk buy --provider <name> --network ethereum --token eth --fiat-amount 100
+```
+
+`--provider` is only required when more than one fiat provider is available.
+
+
+MoonPay is an entry of the `providers` registry with `kind: fiat` (see [Provider](#provider)), so it is configured like any other provider and `wdk provider disable --name moonpay` turns `buy` and `sell` off:
+
+```bash
+wdk config set --key providers.moonpay.config.apiKey --value <key>    # also signUrl, environment
+wdk provider info --name moonpay                                      # what the module receives
+```
+
+The pre-registry `ramp.moonpay.*` keys are **no longer read**. An existing setup must be moved to `providers.moonpay.config.*` with the commands above, or the provider comes back unconfigured.
 
 ### Provider
 
@@ -413,17 +485,18 @@ wdk provider enable --name rhinofi
 
 A **provider** is a named, configured use of a protocol module: `velora` is the swap protocol backed by `@tetherto/wdk-protocol-swap-velora-evm`. The packaged ones live in the `providers` registry of `wdk.config.json`; your own are stored in user config and merged after them.
 
-Each entry declares a `kind` — `swap`, `bridge`, or `swidge`, which serves both — and that declaration is what decides which requests quote it. `wdk swap` quotes the `swap` and `swidge` providers, `wdk bridge` the `bridge` and `swidge` ones, all without importing a module first.
+Each entry declares a `kind` — `swap`, `bridge`, `swidge`, or `fiat` — and that declaration is what decides which requests reach it. `wdk swap` quotes the `swap` and `swidge` providers, `wdk bridge` the `bridge` and `swidge` ones, and `wdk buy` / `wdk sell` use the `fiat` ones, all without importing a module first.
 
 To register your own, install the package with `wdk module add`, then name it in a spec:
 
 | Field | Required | Meaning |
 |---|---|---|
 | `name` | Yes | Short name used by `--protocol`. Lowercase alphanumeric with hyphens, and not one already registered. |
-| `kind` | Yes | `swap`, `bridge`, or `swidge`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. |
+| `kind` | Yes | `swap`, `bridge`, `swidge`, or `fiat`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. |
 | `module` | Yes | The package backing it. Must already be registered, built-in or added with `wdk module add`. |
 | `config` | No | Settings applied on every network, such as an API key. |
 | `networks` | No | Per-network settings keyed by network name, shallow-merged over `config`. |
+| `endpointKeys` | No | Config keys the module takes as a **callback** rather than a value (fiat providers that mint a widget URL on your backend). The CLI stores a URL for each and POSTs to it when the module calls back. |
 
 Because the module runs inside the wallet daemon, adding, deleting or toggling a provider requires the default wallet's passphrase and locks the wallets, the same as `module add`. Disabling follows the rule the other registries use: a disabled provider keeps showing in `provider list` with a `disabled` status so you can find it again, a provider hidden by its disabled module drops out of the listing and cannot be toggled until the module is back, and deleting your own provider also drops any override it had.
 
@@ -492,14 +565,14 @@ Config read commands (`get`, `path`) work without a wallet. Write operations (`s
 ```bash
 # Get
 wdk config get --all                                            # Show all config
-wdk config get --key ramp.moonpay.apiKey                        # Show a specific value
+wdk config get --key providers.moonpay.config.apiKey            # Show a specific value
 wdk config get --network ethereum                               # Show Ethereum config
 wdk config get --key provider --network ethereum                # Show a network-specific value
 
 # Set
-wdk config set --key ramp.moonpay.apiKey --value pk_test_...    # Set a value
+wdk config set --key providers.moonpay.config.apiKey --value pk_test_...   # Set a value
 wdk config set --key provider --value <rpc-url> --network ethereum              # Network-scoped value
-wdk config set --key ramp.moonpay --value '{"apiKey":"...","signUrl":"...","environment":"sandbox"}'  # JSON object
+wdk config set --key providers.moonpay.config --value '{"apiKey":"...","signUrl":"...","environment":"sandbox"}'  # JSON object
 wdk config set --value '{"provider":"https://...","transferMaxFee":5000}' --network optimism    # Full network config
 
 # Reset
@@ -615,8 +688,8 @@ Setup auto-detects the Node.js path, validates the MCP server, and writes the co
 | `get_balance` | `network?`, `token?`, `index?`, `testnet?`, `wallet?` | Get balance with USD values (omit network for all). `token` is a registered ticker. |
 | `get_history` | `network`, `token?`, `limit?`, `index?`, `fromDate?`, `toDate?`, `wallet?` | Transaction history (requires indexer API) |
 | `send_token` | `to`, `amount`, `baseUnits?`, `network`, `token?`, `index?`, `dryRun?`, `wallet?` | Send tokens. `amount` is decimal by default; set `baseUnits=true` to interpret as base units. Returns dry-run preview by default; set `dryRun=false` to execute |
-| `buy_crypto` | `network`, `token`, `fiatCurrency?`, `fiatAmount?`, `cryptoAmount?`, `index?`, `wallet?` | Buy crypto with fiat. Returns a signed MoonPay URL. |
-| `sell_crypto` | `network`, `token`, `fiatCurrency?`, `fiatAmount?`, `cryptoAmount?`, `index?`, `wallet?` | Sell crypto for fiat. Returns a signed MoonPay URL. |
+| `buy_crypto` | `network`, `token`, `fiatCurrency?`, `fiatAmount?`, `cryptoAmount?`, `provider?`, `index?`, `wallet?` | Buy crypto with fiat. Returns the provider's URL. `provider` is required while more than one fiat provider is enabled. |
+| `sell_crypto` | `network`, `token`, `fiatCurrency?`, `fiatAmount?`, `cryptoAmount?`, `provider?`, `index?`, `wallet?` | Sell crypto for fiat. Returns the provider's URL. `provider` is required while more than one fiat provider is enabled. |
 | `list_methods` | `network?` | List a wallet module's chain-specific methods (omit network for all modules). Each entry includes its kind (read/write) and parameter schema. |
 | `call_method` | `network`, `name`, `args?`, `index?`, `wallet?` | Invoke a declared module method. `args` maps parameter names to string values, using the declared camelCase name — `{"maxFee": "1000"}`, not the CLI flag `--max-fee`. A structured parameter's value is a JSON-encoded string. |
 
