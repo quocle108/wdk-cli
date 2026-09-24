@@ -49,7 +49,7 @@ const KIND_METHODS = {
   bridge: ['quoteBridge', 'bridge'],
   swidge: ['quoteSwidge', 'swidge'],
   fiat: ['quoteBuy', 'buy', 'quoteSell', 'sell'],
-  pricing: ['getCurrentPrice', 'getMultiCurrentPrices']
+  pricing: ['getCurrentPrice', 'getMultiPriceData']
 }
 
 /**

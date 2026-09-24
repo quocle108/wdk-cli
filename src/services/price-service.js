@@ -27,6 +27,14 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
 const QUOTE = 'USD'
 
 /**
+ * A network's native balance awaiting valuation.
+ *
+ * @typedef {Object} NativeAmount
+ * @property {string} network - The network name.
+ * @property {bigint} amount - The native balance in base units.
+ */
+
+/**
  * Returns the symbol a price feed knows a token by: its registered slug, or the
  * token's own symbol when the feed uses the same name. The registry records
  * only the disagreements — `usdt` is `UST` to Bitfinex, while `BTC` and `ETH`
@@ -44,17 +52,16 @@ function feedSymbol (token, feed) {
  * Asks the price feed for a token's USD price.
  *
  * @param {TokenEntry} token - The token entry.
- * @param {string} label - The token symbol, for error messages.
- * @param {string} network - The network name, for error messages.
+ * @param {string} network - The network name, for the error message.
  * @returns {Promise<number>} The USD price.
  * @throws {WdkCliError} TOKEN_NOT_SUPPORTED when the feed does not carry the token.
  */
-async function priceOf (token, label, network) {
+async function priceOf (token, network) {
   const { name, provider } = await resolvePricingProvider()
   const price = await provider.getLastPrice(feedSymbol(token, name), QUOTE)
   if (typeof price !== 'number' || !Number.isFinite(price)) {
     throw new WdkCliError(
-      `No USD price available for ${label} on ${network}.`,
+      `No USD price available for ${token.symbol} on ${network}.`,
       ErrorCode.TOKEN_NOT_SUPPORTED
     )
   }
@@ -75,7 +82,7 @@ export async function getNativeUsdPrice (network) {
       ErrorCode.NETWORK_NOT_SUPPORTED
     )
   }
-  return priceOf(native, native.symbol, network)
+  return priceOf(native, network)
 }
 
 /**
@@ -90,7 +97,44 @@ export async function getTokenUsdPrice (network, tokenAddress) {
   if (!tokenInfo) {
     throw new WdkCliError(`Unknown token ${tokenAddress} on ${network}.`, ErrorCode.INVALID_TOKEN)
   }
-  return priceOf(tokenInfo, tokenInfo.symbol, network)
+  return priceOf(tokenInfo, network)
+}
+
+/**
+ * Converts several networks' native balances to USD in one call to the feed.
+ *
+ * The feed batches every pair it has not cached into a single request, so this
+ * costs one round trip for the whole set rather than one per network. Networks
+ * with no native token, or that the feed does not price, are left out of the
+ * result rather than reported as zero.
+ *
+ * @param {NativeAmount[]} items - The per-network native amounts to value.
+ * @returns {Promise<Map<string, number>>} USD value keyed by network, to 2 decimals.
+ * @throws {WdkCliError} MISSING_CONFIG when no price feed is available.
+ * @throws {WdkCliError} INVALID_ARGUMENT when several price feeds are enabled.
+ */
+export async function convertManyNativeToUsd (items) {
+  if (items.length === 0) return new Map()
+
+  const priced = items.flatMap(({ network, amount }) => {
+    const token = getNativeToken(network)
+    return token ? [{ network, amount, token }] : []
+  })
+  if (priced.length === 0) return new Map()
+
+  const { name, provider } = await resolvePricingProvider()
+  const data = await provider.getMultiLastPriceData(
+    priced.map(({ token }) => ({ from: feedSymbol(token, name), to: QUOTE }))
+  )
+
+  const usdByNetwork = new Map()
+  priced.forEach(({ network, amount, token }, i) => {
+    const price = data[i]?.lastPrice
+    if (typeof price !== 'number' || !Number.isFinite(price)) return
+    const value = new BigNumber(amount.toString()).shiftedBy(-token.decimals)
+    usdByNetwork.set(network, Math.round(value.multipliedBy(price).toNumber() * 100) / 100)
+  })
+  return usdByNetwork
 }
 
 /**

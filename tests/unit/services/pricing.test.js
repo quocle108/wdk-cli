@@ -130,8 +130,18 @@ describe('resolvePricingProvider', () => {
     const first = await resolvePricingProvider()
     const second = await resolvePricingProvider()
 
-    expect(loadProtocolClass).toHaveBeenCalledTimes(1)
     expect(second.provider).toBe(first.provider)
+  })
+
+  it('rebuilds the provider when the module now exports a different client', async () => {
+    withNamedExport(stubClient())
+    const { resolvePricingProvider } = await loadPricing()
+    const first = await resolvePricingProvider()
+
+    withNamedExport(stubClient())
+    const second = await resolvePricingProvider()
+
+    expect(second.provider).not.toBe(first.provider)
   })
 })
 
@@ -221,7 +231,7 @@ describe('resolvePricingProvider when no single feed is usable', () => {
       expect.objectContaining({
         message: 'Several price feeds are enabled: bitfinex, coingecko.',
         code: 'INVALID_ARGUMENT',
-        suggestion: 'Leave one enabled with: wdk provider disable --name coingecko'
+        suggestion: 'Choose one by leaving a single feed enabled: wdk provider disable --name <name>'
       })
     )
   })
@@ -230,7 +240,7 @@ describe('resolvePricingProvider when no single feed is usable', () => {
     getInstalledVersion.mockReturnValue(null)
     const { resolvePricingProvider } = await loadPricing()
 
-    await expect(resolvePricingProvider()).rejects.toThrow()
+    await expect(resolvePricingProvider()).rejects.toThrow('No price feed is available.')
     expect(loadProtocolClass).not.toHaveBeenCalled()
   })
 })

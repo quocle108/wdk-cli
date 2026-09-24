@@ -16,6 +16,7 @@ import { jest } from '@jest/globals'
 
 const USDT_ETH = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
 const getLastPrice = jest.fn()
+const getMultiLastPriceData = jest.fn()
 const resolvePricingProvider = jest.fn()
 
 jest.unstable_mockModule('../../../src/services/pricing/index.js', () => ({
@@ -23,13 +24,17 @@ jest.unstable_mockModule('../../../src/services/pricing/index.js', () => ({
   resolvePricingProvider
 }))
 
-const { convertToUsd, getNativeUsdPrice } =
+const { convertToUsd, getNativeUsdPrice, convertManyNativeToUsd } =
   await import('../../../src/services/price-service.js')
 
 beforeEach(() => {
   getLastPrice.mockReset()
+  getMultiLastPriceData.mockReset()
   resolvePricingProvider.mockReset()
-  resolvePricingProvider.mockResolvedValue({ name: 'bitfinex', provider: { getLastPrice } })
+  resolvePricingProvider.mockResolvedValue({
+    name: 'bitfinex',
+    provider: { getLastPrice, getMultiLastPriceData }
+  })
 })
 
 describe('convertToUsd', () => {
@@ -115,5 +120,50 @@ describe('when the feed has no price', () => {
     resolvePricingProvider.mockRejectedValue(new Error('No price feed is available.'))
 
     await expect(getNativeUsdPrice('ethereum')).rejects.toThrow('No price feed is available.')
+  })
+})
+
+describe('convertManyNativeToUsd', () => {
+  it('asks the feed once for every network, not once per network', async () => {
+    getMultiLastPriceData.mockResolvedValue([
+      { lastPrice: 100000 },
+      { lastPrice: 2000 },
+      { lastPrice: 0.3 }
+    ])
+
+    const usd = await convertManyNativeToUsd([
+      { network: 'bitcoin', amount: 100_000_000n },
+      { network: 'ethereum', amount: 1_000_000_000_000_000_000n },
+      { network: 'tron', amount: 1_000_000n }
+    ])
+
+    expect(getMultiLastPriceData).toHaveBeenCalledTimes(1)
+    expect(getMultiLastPriceData).toHaveBeenCalledWith([
+      { from: 'BTC', to: 'USD' },
+      { from: 'ETH', to: 'USD' },
+      { from: 'TRX', to: 'USD' }
+    ])
+    expect(usd.get('bitcoin')).toBe(100000)
+    expect(usd.get('ethereum')).toBe(2000)
+    expect(usd.get('tron')).toBe(0.3)
+  })
+
+  it('leaves out a network the feed does not price', async () => {
+    getMultiLastPriceData.mockResolvedValue([{ lastPrice: 100000 }, { lastPrice: null }])
+
+    const usd = await convertManyNativeToUsd([
+      { network: 'bitcoin', amount: 100_000_000n },
+      { network: 'ethereum', amount: 1_000_000_000_000_000_000n }
+    ])
+
+    expect(usd.get('bitcoin')).toBe(100000)
+    expect(usd.has('ethereum')).toBe(false)
+  })
+
+  it('does not call the feed for an empty set', async () => {
+    const usd = await convertManyNativeToUsd([])
+
+    expect(usd.size).toBe(0)
+    expect(resolvePricingProvider).not.toHaveBeenCalled()
   })
 })

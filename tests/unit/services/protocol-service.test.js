@@ -253,7 +253,7 @@ describe('assertImplementsKind', () => {
   it('reports a class that implements no protocol interface', () => {
     expect(() => assertImplementsKind('lifi', 'swap', classWith())).toThrow(
       expect.objectContaining({
-        suggestion: 'Its module implements none of: swap, bridge, swidge.'
+        suggestion: 'Its module implements none of: swap, bridge, swidge, fiat.'
       })
     )
   })

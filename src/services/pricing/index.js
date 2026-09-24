@@ -22,11 +22,23 @@ import { WdkCliError, ErrorCode } from '../../errors/index.js'
 /** The registry kind a USD price feed declares. */
 export const PRICING = 'pricing'
 
-/** How long a fetched price stays fresh. Matches the previous hand-rolled cache;
- *  the package would otherwise default to an hour. */
+/** How long a fetched price stays fresh; the package would otherwise cache for an hour. */
 const CACHE_TTL_MS = 5 * 60 * 1000
 
-/** @type {Map<string, Pricing>} */
+/**
+ * A resolved price feed.
+ *
+ * @typedef {Object} ResolvedPricing
+ * @property {string} name - The provider short name, which is also its `metadata.slugs` key.
+ * @property {Pricing} provider - The SDK wrapper around the provider's client.
+ */
+
+/**
+ * The provider built for each name, keyed on the class it was built from so a
+ * reinstalled or swapped module is not served a stale instance.
+ *
+ * @type {Map<string, { ClientClass: Function, resolved: ResolvedPricing }>}
+ */
 const instances = new Map()
 
 /**
@@ -46,8 +58,7 @@ function getPricingProviders () {
  * providers cannot be added, so the usable one is whichever of the packaged
  * feeds is enabled.
  *
- * @returns {Promise<{ name: string, provider: Pricing }>} The provider and the name
- *   it is registered under, which is also its `metadata.slugs` key.
+ * @returns {Promise<ResolvedPricing>} The resolved feed.
  * @throws {WdkCliError} MISSING_CONFIG when no pricing provider is available.
  * @throws {WdkCliError} INVALID_ARGUMENT when several are enabled at once.
  * @throws {WdkCliError} UNSUPPORTED_MODULE when the module exports no pricing client.
@@ -65,22 +76,24 @@ export async function resolvePricingProvider () {
     throw new WdkCliError(
       `Several price feeds are enabled: ${usable.join(', ')}.`,
       ErrorCode.INVALID_ARGUMENT,
-      `Leave one enabled with: wdk provider disable --name ${usable[1]}`
+      'Choose one by leaving a single feed enabled: wdk provider disable --name <name>'
     )
   }
 
   const name = usable[0]
-  const cached = instances.get(name)
-  if (cached) return { name, provider: cached }
-
   const module = getProtocols()[name].module
   const ClientClass = clientClass(await loadProtocolClass(module), name)
+
+  const cached = instances.get(name)
+  if (cached?.ClientClass === ClientClass) return cached.resolved
+
   const provider = /** @type {Pricing} */ (new PricingProvider({
     client: new ClientClass(resolveProtocolConfig(name)),
     priceCacheDurationMs: CACHE_TTL_MS
   }))
-  instances.set(name, provider)
-  return { name, provider }
+  const resolved = { name, provider }
+  instances.set(name, { ClientClass, resolved })
+  return resolved
 }
 
 /**
