@@ -12,16 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/** @typedef {import('./protocol.js').DaemonRequest} DaemonRequest */
-/** @typedef {import('./protocol.js').DaemonResponse} DaemonResponse */
-/** @typedef {import('./protocol.js').WalletStatus} WalletStatus */
-/** @typedef {import('node:net').Server} Server */
-/** @typedef {import('node:net').Socket} Socket */
-
 import { createServer } from 'node:net'
 import { readFileSync } from 'node:fs'
 import { writeFile, unlink, chmod, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { mnemonicToSeedSync } from 'bip39'
 import {
   getDaemonSocketPath,
   getDaemonPidPath,
@@ -30,12 +25,31 @@ import {
   DAEMON_MAX_REQUEST_BYTES
 } from '../config/constants.js'
 import { configService } from '../services/config-service.js'
-import { deriveKey, decryptWithKey } from '../security/encryption.js'
+import { deriveKey, decryptWithKey } from '@tetherto/wdk-utils'
 import { WdkService } from '../services/wdk-service.js'
 import { isValidNetwork, getNetworkConfig } from '../config/networks.js'
 import { getTokenByAddress } from '../services/token-service.js'
+import { getMethod, convertMethodArgs, bigintReplacer } from '../services/methods.js'
+import { quoteBest, executeBest } from '../services/swap-orchestrator.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { formatAmount } from '../ui/formatters.js'
+
+/** @typedef {import('./protocol.js').DaemonRequest} DaemonRequest */
+/** @typedef {import('./protocol.js').DaemonResponse} DaemonResponse */
+/** @typedef {import('./protocol.js').WalletStatus} WalletStatus */
+/** @typedef {import('node:net').Server} Server */
+/** @typedef {import('node:net').Socket} Socket */
+/** @typedef {import('@tetherto/wdk').WdkAccount} WalletAccount */
+/** @typedef {import('../services/protocol-adapter.js').SwapRequest} SwapRequest */
+/** @typedef {import('../services/swap-orchestrator.js').RouteRequestContext} RouteRequestContext */
+
+/**
+ * @typedef {Object} QuoteInputs
+ * @property {WalletAccount} account - The source-network account that pays.
+ * @property {string} from - The paying account's address, reported back to the caller.
+ * @property {SwapRequest} request - The normalized request with BigInt amounts and a resolved recipient.
+ * @property {RouteRequestContext} context - Display context for the no-route message.
+ */
 
 /**
  * @typedef {Object} WalletState
@@ -44,6 +58,9 @@ import { formatAmount } from '../ui/formatters.js'
  * @property {number} ttlMs - The session TTL in milliseconds (0 = no expiry).
  * @property {number} expiresAt - The Unix timestamp (ms) when the session expires (0 = no expiry).
  */
+
+/** Max length of a summarized third-party error message before truncation. */
+const MAX_ERROR_LEN = 200
 
 /**
  * Builds a failure DaemonResponse that preserves the error code across IPC.
@@ -55,18 +72,37 @@ import { formatAmount } from '../ui/formatters.js'
  */
 function errorResponse (e) {
   if (!(e instanceof Error)) return { ok: false, error: String(e) }
-  const err = /** @type {Error & { code?: unknown, suggestion?: unknown }} */ (e)
+  const err = /** @type {Error & { code?: unknown, suggestion?: unknown, shortMessage?: unknown }} */ (e)
+
+  // Pass our own WdkCliError messages through verbatim (concise, sometimes
+  // intentionally multi-line). Summarize only third-party errors — ethers packs
+  // the whole failing tx into `message`, so prefer `shortMessage` and cap it.
+  let error
+  if (e instanceof WdkCliError) {
+    error = err.message
+  } else {
+    const raw = typeof err.shortMessage === 'string' ? err.shortMessage : err.message
+    error = raw.length > MAX_ERROR_LEN ? raw.slice(0, MAX_ERROR_LEN) + '…' : raw
+  }
+
+  const suggestion = typeof err.suggestion === 'string'
+    ? err.suggestion
+    : err.code === 'INSUFFICIENT_FUNDS'
+      ? 'Quoting a swap/bridge estimates the on-chain tx, so the account must hold the input token plus native gas (or use a gasless 4337/7702 account).'
+      : undefined
+
   return {
     ok: false,
-    error: err.message,
+    error,
     ...(typeof err.code === 'string' ? { code: err.code } : {}),
-    ...(typeof err.suggestion === 'string' ? { suggestion: err.suggestion } : {})
+    ...(suggestion ? { suggestion } : {})
   }
 }
 
 /**
  * Long-lived wallet daemon. Holds unlocked WDK instances in memory and serves
- * CLI/MCP requests over a Unix socket.
+ * CLI/MCP requests over a local IPC endpoint (Unix domain socket on
+ * macOS/Linux, named pipe on Windows).
  */
 export class WalletDaemon {
   /** @type {Map<string, WalletState>} */
@@ -75,7 +111,10 @@ export class WalletDaemon {
   #server = null
 
   /**
-   * Starts the daemon: creates the Unix socket, writes the PID file, and begins accepting connections.
+   * Starts the daemon: creates the IPC endpoint (Unix domain socket on
+   * macOS/Linux, named pipe on Windows), writes the PID file, and begins
+   * accepting connections. Access is restricted to the current user on both
+   * platforms (umask 0o077 on Unix, default per-user ACL on Windows).
    *
    * @returns {Promise<void>}
    */
@@ -96,8 +135,10 @@ export class WalletDaemon {
 
     const oldUmask = isWin ? 0 : process.umask(0o077)
     await new Promise((resolve, reject) => {
-      this.#server.on('error', reject)
+      const onError = reject
+      this.#server.once('error', onError)
       this.#server.listen(socketPath, () => {
+        this.#server.removeListener('error', onError)
         if (!isWin) process.umask(oldUmask)
         resolve()
       })
@@ -130,16 +171,18 @@ export class WalletDaemon {
     const data = readFileSync(walletPath, 'utf8')
     const payload = JSON.parse(data)
     const salt = Buffer.from(payload.salt, 'hex')
-    const key = deriveKey(passphrase, salt)
+    const key = deriveKey(passphrase, salt, payload)
     try {
-      let seed
+      let seedPhrase
       try {
-        seed = decryptWithKey(payload, key)
+        seedPhrase = decryptWithKey(payload, key)
       } catch {
         throw new WdkCliError('Incorrect passphrase.', ErrorCode.WRONG_PASSPHRASE)
       }
+      // Buffer (not the immutable mnemonic string) so the seed can be zeroed on lock.
+      const seedBuffer = mnemonicToSeedSync(seedPhrase)
       const wdk = new WdkService()
-      wdk.createInstance(seed)
+      wdk.createInstance(seedBuffer)
 
       const ttlMs = ttlMinutes === 0 ? 0 : ttlMinutes * 60 * 1000
       const state = {
@@ -332,6 +375,30 @@ export class WalletDaemon {
         }
       }
 
+      case 'call_method': {
+        if (!req.network || !isValidNetwork(req.network)) {
+          return { ok: false, error: `Invalid network: ${req.network}` }
+        }
+        if (!req.method) {
+          return { ok: false, error: 'Missing required field: method' }
+        }
+        try {
+          const wdk = this.#requireWallet(wallet)
+          // Re-validate against the daemon's own catalog copy: only declared
+          // methods are invocable, regardless of what the client sent.
+          const method = getMethod(req.network, req.method)
+          const values = convertMethodArgs(method, req.args || {})
+          const account = await wdk.getAccount(req.network, req.index ?? 0)
+          const result = await account[req.method](...values)
+          const safe = result === undefined
+            ? null
+            : JSON.parse(JSON.stringify({ v: result }, bigintReplacer)).v
+          return { ok: true, data: { result: safe, address: await account.getAddress() } }
+        } catch (e) {
+          return errorResponse(e)
+        }
+      }
+
       case 'get_balance': {
         if (!req.network || !isValidNetwork(req.network)) {
           return { ok: false, error: `Invalid network: ${req.network}` }
@@ -340,6 +407,7 @@ export class WalletDaemon {
           const wdk = this.#requireWallet(wallet)
           const networkConfig = getNetworkConfig(req.network)
           const account = await wdk.getAccount(req.network, req.index ?? 0)
+          const address = await account.getAddress()
 
           if (req.token) {
             const balance = await account.getTokenBalance(req.token)
@@ -349,7 +417,8 @@ export class WalletDaemon {
               data: {
                 balance: balance.toString(),
                 symbol: tokenInfo?.symbol || 'tokens',
-                decimals: tokenInfo?.decimals || 0
+                decimals: tokenInfo?.decimals || 0,
+                address
               }
             }
           }
@@ -360,7 +429,8 @@ export class WalletDaemon {
             data: {
               balance: balance.toString(),
               symbol: networkConfig.nativeSymbol,
-              decimals: networkConfig.decimals
+              decimals: networkConfig.decimals,
+              address
             }
           }
         } catch (e) {
@@ -395,7 +465,7 @@ export class WalletDaemon {
 
           const feeFormatted = formatAmount(fee, networkConfig.decimals, networkConfig.nativeSymbol)
 
-          return { ok: true, data: { fee: fee.toString(), feeFormatted } }
+          return { ok: true, data: { fee: fee.toString(), feeFormatted, from: await account.getAddress() } }
         } catch (e) {
           return errorResponse(e)
         }
@@ -410,44 +480,94 @@ export class WalletDaemon {
           const account = await wdk.getAccount(req.network, req.index ?? 0)
           const sendAmount = BigInt(req.amount)
 
-          let txHash
-          let from
-          let fee
-
-          if (req.token) {
-            const result = await account.transfer({
-              token: req.token,
-              recipient: req.to,
-              amount: sendAmount
-            })
-            txHash = result.hash
-            from = await account.getAddress()
-            fee = result.fee?.toString()
-          } else {
-            const result = await account.sendTransaction({
-              to: req.to,
-              value: sendAmount
-            })
-            txHash = result.hash
-            from = await account.getAddress()
-            fee = result.fee?.toString()
-          }
+          const result = req.token
+            ? await account.transfer({ token: req.token, recipient: req.to, amount: sendAmount })
+            : await account.sendTransaction({ to: req.to, value: sendAmount })
 
           return {
             ok: true,
             data: {
-              txHash,
+              txHash: result.hash,
               network: req.network,
-              from,
+              from: await account.getAddress(),
               to: req.to,
               amount: req.amount,
-              fee
+              fee: result.fee?.toString()
             }
           }
         } catch (e) {
           return errorResponse(e)
         }
       }
+
+      case 'sign_message': {
+        if (!req.network || !isValidNetwork(req.network)) {
+          return { ok: false, error: `Invalid network: ${req.network}` }
+        }
+        if (!req.message) {
+          return { ok: false, error: 'Missing required field: message' }
+        }
+        try {
+          const wdk = this.#requireWallet(wallet)
+          const account = await wdk.getAccount(req.network, req.index ?? 0)
+          const signature = await account.sign(req.message)
+          const address = await account.getAddress()
+          return { ok: true, data: { address, signature } }
+        } catch (e) {
+          return errorResponse(e)
+        }
+      }
+
+      case 'verify_message': {
+        if (!req.network || !isValidNetwork(req.network)) {
+          return { ok: false, error: `Invalid network: ${req.network}` }
+        }
+        if (!req.message || !req.signature) {
+          return { ok: false, error: 'Missing required fields: message, signature' }
+        }
+        try {
+          const wdk = this.#requireWallet(wallet)
+          const account = await wdk.getAccount(req.network, req.index ?? 0)
+          const valid = await account.verify(req.message, req.signature)
+          return { ok: true, data: { valid, address: await account.getAddress() } }
+        } catch (e) {
+          return errorResponse(e)
+        }
+      }
+
+      case 'get_transaction': {
+        if (!req.network || !isValidNetwork(req.network)) {
+          return { ok: false, error: `Invalid network: ${req.network}` }
+        }
+        if (!req.hash) {
+          return { ok: false, error: 'Missing required field: hash' }
+        }
+        try {
+          const wdk = this.#requireWallet(wallet)
+          const account = await wdk.getAccount(req.network, req.index ?? 0)
+          const receipt = req.finality
+            ? await account.waitForTransaction(req.hash, {
+              target: req.finality,
+              ...(req.timeout ? { timeout: req.timeout } : {})
+            })
+            : await account.getTransaction(req.hash)
+          const safe = JSON.parse(JSON.stringify({ v: receipt }, bigintReplacer)).v
+          return { ok: true, data: { transaction: safe } }
+        } catch (e) {
+          return errorResponse(e)
+        }
+      }
+      case 'quote_swap':
+        return this.#handleQuote(req, 'swap', wallet)
+
+      case 'quote_bridge':
+        return this.#handleQuote(req, 'bridge', wallet)
+
+      case 'execute_swap':
+        return this.#handleExecute(req, 'swap', wallet)
+
+      case 'execute_bridge':
+        return this.#handleExecute(req, 'bridge', wallet)
 
       case 'list_wallets': {
         return { ok: true, data: { wallets: this.#getWalletStatusList() } }
@@ -472,6 +592,128 @@ export class WalletDaemon {
       default:
         return { ok: false, error: `Unknown action: ${req.action}` }
     }
+  }
+
+  /**
+   * Handles a best-route quote request (swap or bridge). Resolves the account
+   * for the source network, converts the string amounts back to BigInt, quotes
+   * every capable protocol concurrently, and returns the winning quote with
+   * BigInt fields serialized as strings.
+   *
+   * @param {DaemonRequest} req - The parsed request object.
+   * @param {'swap' | 'bridge'} requestKind - Which kind of quote to run.
+   * @param {string} wallet - The resolved wallet name.
+   * @returns {Promise<DaemonResponse>} The response with the best quote.
+   */
+  async #handleQuote (req, requestKind, wallet) {
+    if (!req.network || !isValidNetwork(req.network)) {
+      return { ok: false, error: `Invalid network: ${req.network}` }
+    }
+    if (!req.request) {
+      return { ok: false, error: 'Missing required field: request' }
+    }
+    try {
+      const { account, from, request, context } = await this.#resolveQuoteInputs(req, wallet)
+      const { quote: best, failures } = await quoteBest({
+        account,
+        requestKind,
+        network: req.network,
+        request,
+        context,
+        protocol: req.protocol
+      })
+
+      return {
+        ok: true,
+        data: {
+          protocol: best.protocol,
+          from,
+          inputAmount: best.inputAmount !== undefined ? best.inputAmount.toString() : undefined,
+          outputAmount: best.outputAmount.toString(),
+          fees: JSON.parse(JSON.stringify({ v: best.fees }, bigintReplacer)).v,
+          skipped: failures
+        }
+      }
+    } catch (e) {
+      return errorResponse(e)
+    }
+  }
+
+  /**
+   * Handles a best-route execution request (swap or bridge): quotes every
+   * capable protocol to pick the winner, executes only the winner as a single
+   * transaction, and returns its result plus the protocols that were skipped.
+   *
+   * @param {DaemonRequest} req - The parsed request object.
+   * @param {'swap' | 'bridge'} requestKind - Which kind of transaction to run.
+   * @param {string} wallet - The resolved wallet name.
+   * @returns {Promise<DaemonResponse>} The response with the execution result.
+   */
+  async #handleExecute (req, requestKind, wallet) {
+    if (!req.network || !isValidNetwork(req.network)) {
+      return { ok: false, error: `Invalid network: ${req.network}` }
+    }
+    if (!req.request) {
+      return { ok: false, error: 'Missing required field: request' }
+    }
+    try {
+      const { account, from, request, context } = await this.#resolveQuoteInputs(req, wallet)
+      const { protocol, result, failures } = await executeBest({
+        account,
+        requestKind,
+        network: req.network,
+        request,
+        context,
+        protocol: req.protocol
+      })
+
+      return {
+        ok: true,
+        data: {
+          protocol,
+          from,
+          result: JSON.parse(JSON.stringify({ v: result }, bigintReplacer)).v,
+          skipped: failures
+        }
+      }
+    } catch (e) {
+      return errorResponse(e)
+    }
+  }
+
+  /**
+   * Builds the account, normalized request, and display context shared by the
+   * quote and execute handlers. Converts the string amounts back to BigInt and
+   * defaults the recipient to the wallet's own address on the destination
+   * network — the same seed owns an address on every chain, so a cross-VM
+   * route receives a correctly-formatted recipient (bridge requires one;
+   * swap's `to` is optional).
+   *
+   * @param {DaemonRequest} req - The parsed request object (with `req.request` set).
+   * @param {string} wallet - The resolved wallet name.
+   * @returns {Promise<QuoteInputs>} The inputs shared by the quote and execute handlers.
+   */
+  async #resolveQuoteInputs (req, wallet) {
+    const wdk = this.#requireWallet(wallet)
+    const account = await wdk.getAccount(req.network, req.index ?? 0)
+
+    const from = await account.getAddress()
+
+    const r = /** @type {import('./protocol.js').QuoteRequest} */ (req.request)
+    const destAccount = r.toNetwork && r.toNetwork !== req.network
+      ? await wdk.getAccount(r.toNetwork, req.index ?? 0)
+      : account
+    const recipient = r.recipient || (destAccount === account ? from : await destAccount.getAddress())
+    const request = /** @type {SwapRequest} */ ({
+      fromToken: r.fromToken,
+      toToken: r.toToken,
+      toChain: r.toChain,
+      amountIn: r.amountIn !== undefined ? BigInt(r.amountIn) : undefined,
+      amountOut: r.amountOut !== undefined ? BigInt(r.amountOut) : undefined,
+      recipient
+    })
+    const context = { fromToken: r.fromSymbol, toToken: r.toSymbol, toNetwork: r.toNetwork }
+    return { account, from, request, context }
   }
 
   /**

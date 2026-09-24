@@ -1,10 +1,12 @@
 #!/usr/bin/env -S node --disable-warning=ExperimentalWarning
 
+// Must come before any module that constructs zod schemas.
+import 'zod/compile'
+
 // stdout must be clean for JSON-RPC — redirect everything else to stderr
 
 console.log = (...args) => process.stderr.write(args.map(String).join(' ') + '\n')
 console.warn = (...args) => process.stderr.write(args.map(String).join(' ') + '\n')
-console.error = (...args) => process.stderr.write(args.map(String).join(' ') + '\n')
 
 const _origStdoutWrite = process.stdout.write.bind(process.stdout)
 process.stdout.write = (chunk, ...rest) => {
@@ -18,6 +20,6 @@ process.stdout.write = (chunk, ...rest) => {
 const { startMcpServer } = await import('../src/index.js')
 
 startMcpServer().catch((error) => {
-  process.stderr.write(`MCP server error: ${error}\n`)
+  console.error('MCP server error:', error)
   process.exit(1)
 })

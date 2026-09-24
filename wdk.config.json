@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 3,
   "defaults": {
     "defaultIndex": 0,
     "indexer": {
@@ -8,19 +8,90 @@
     },
     "output": {
       "json": false
-    },
-    "ramp": {
-      "moonpay": {
-        "apiKey": "",
-        "signUrl": "",
-        "environment": ""
+    }
+  },
+  "modules": {
+    "@tetherto/wdk-wallet-btc": { "version": "1.0.0-beta.15" },
+    "@tetherto/wdk-wallet-evm": {
+      "version": "1.0.0-beta.18",
+      "methods": {
+        "getAllowance": { "kind": "read", "params": { "token": "string", "spender": "string" } },
+        "getTokenBalances": { "kind": "read", "params": { "tokenAddresses": "string[]" } },
+        "approve": { "kind": "write", "style": "object", "params": { "token": "string", "spender": "string", "amount": "bigint" } }
       }
+    },
+    "@tetherto/wdk-wallet-evm-erc-4337": {
+      "version": "1.0.0-beta.18",
+      "methods": {
+        "getAllowance": { "kind": "read", "params": { "token": "string", "spender": "string" } },
+        "getTokenBalances": { "kind": "read", "params": { "tokenAddresses": "string[]" } },
+        "getPaymasterTokenBalance": { "kind": "read", "params": {} },
+        "getUserOperationReceipt": { "kind": "read", "params": { "hash": "string" } },
+        "approve": { "kind": "write", "style": "object", "params": { "token": "string", "spender": "string", "amount": "bigint" } }
+      }
+    },
+    "@tetherto/wdk-wallet-solana": { "version": "1.0.0-beta.14" },
+    "@tetherto/wdk-wallet-spark": {
+      "version": "1.0.0-beta.25",
+      "methods": {
+        "getStaticDepositAddress": { "kind": "read", "params": {} },
+        "getSingleUseDepositAddress": { "kind": "read", "params": {} },
+        "getLightningReceiveRequest": { "kind": "read", "params": { "invoiceId": "string" } },
+        "getLightningSendRequest": { "kind": "read", "params": { "requestId": "string" } },
+        "claimStaticDeposit": { "kind": "write", "params": { "txid": "string" } },
+        "claimDeposit": { "kind": "write", "params": { "txid": "string" } },
+        "createLightningInvoice": { "kind": "write", "style": "object", "params": { "amountSats": "number", "memo": "string?", "expirySeconds": "number?", "includeSparkAddress": "boolean?", "includeSparkInvoice": "boolean?", "receiverIdentityPubkey": "string?", "descriptionHash": "string?" } },
+        "payLightningInvoice": { "kind": "write", "style": "object", "params": { "invoice": "string", "maxFeeSats": "number", "preferSpark": "boolean?", "amountSatsToSend": "number?", "idempotencyKey": "string?" } },
+        "quotePayLightningInvoice": { "kind": "read", "style": "object", "params": { "encodedInvoice": "string", "amountSats": "number?" } }
+      }
+    },
+    "@tetherto/wdk-wallet-tron": { "version": "1.0.0-beta.13" },
+    "@tetherto/wdk-protocol-fiat-moonpay": { "version": "1.0.0-beta.3" },
+    "@transak/wdk-protocol-fiat-transak": { "version": "1.0.2" },
+    "@tetherto/wdk-protocol-swap-velora-evm": { "version": "1.0.0-beta.6" },
+    "@tetherto/wdk-protocol-bridge-usdt0-evm": { "version": "1.0.0-beta.7" },
+    "@rhino.fi/wdk-protocol-swidge-rhinofi": { "version": "1.3.1" },
+    "@symbiosis-finance/wdk-protocol-swidge-symbiosis": { "version": "1.3.0" }
+  },
+  "providers": {
+    "moonpay": {
+      "kind": "fiat",
+      "module": "@tetherto/wdk-protocol-fiat-moonpay",
+      "config": { "apiKey": "", "signUrl": "", "environment": "" },
+      "endpointKeys": ["signUrl"]
+    },
+    "transak": {
+      "kind": "fiat",
+      "module": "@transak/wdk-protocol-fiat-transak",
+      "config": { "apiKey": "", "widgetUrl": "", "getOrder": "", "environment": "" },
+      "endpointKeys": ["widgetUrl", "getOrder"]
+    },
+    "velora": {
+      "kind": "swap",
+      "module": "@tetherto/wdk-protocol-swap-velora-evm",
+      "config": {}
+    },
+    "usdt0": {
+      "kind": "bridge",
+      "module": "@tetherto/wdk-protocol-bridge-usdt0-evm",
+      "config": {}
+    },
+    "rhinofi": {
+      "kind": "swidge",
+      "module": "@rhino.fi/wdk-protocol-swidge-rhinofi",
+      "config": { "apiKey": "" }
+    },
+    "symbiosis": {
+      "kind": "swidge",
+      "module": "@symbiosis-finance/wdk-protocol-swidge-symbiosis",
+      "config": { "partnerId": "wdk" }
     }
   },
   "networks": {
     "bitcoin": {
-      "module": "@tetherto/wdk-wallet-btc@1.0.0-beta.8",
+      "module": "@tetherto/wdk-wallet-btc",
       "displayName": "Bitcoin",
+      "chainId": "bip122:000000000019d6689c085ae165831e93",
       "indexerSlug": "bitcoin",
       "config": {
         "client": {
@@ -36,8 +107,9 @@
       }
     },
     "bitcoin-testnet3": {
-      "module": "@tetherto/wdk-wallet-btc@1.0.0-beta.8",
+      "module": "@tetherto/wdk-wallet-btc",
       "displayName": "Bitcoin Testnet3",
+      "chainId": "bip122:000000000933ea01ad0ee984209779ba",
       "testnet": true,
       "config": {
         "client": {
@@ -53,18 +125,23 @@
       }
     },
     "ethereum": {
-      "module": "@tetherto/wdk-wallet-evm@1.0.0-beta.11",
+      "module": "@tetherto/wdk-wallet-evm",
       "displayName": "Ethereum",
+      "chainId": "eip155:1",
       "indexerSlug": "ethereum",
       "config": {
         "chainId": 1,
         "provider": "https://ethereum-rpc.publicnode.com",
         "transferMaxFee": 5000000000000000
+      },
+      "providers": {
+        "symbiosis": { "chain": 1 }
       }
     },
     "sepolia": {
-      "module": "@tetherto/wdk-wallet-evm@1.0.0-beta.11",
+      "module": "@tetherto/wdk-wallet-evm",
       "displayName": "Sepolia Testnet",
+      "chainId": "eip155:11155111",
       "testnet": true,
       "indexerSlug": "sepolia",
       "config": {
@@ -74,94 +151,120 @@
       }
     },
     "polygon": {
-      "module": "@tetherto/wdk-wallet-evm@1.0.0-beta.11",
+      "module": "@tetherto/wdk-wallet-evm",
       "displayName": "Polygon",
+      "chainId": "eip155:137",
       "indexerSlug": "polygon",
       "config": {
         "chainId": 137,
         "provider": "https://polygon.drpc.org",
         "transferMaxFee": 5000000000000000
+      },
+      "providers": {
+        "symbiosis": { "chain": 137 }
       }
     },
     "arbitrum": {
-      "module": "@tetherto/wdk-wallet-evm@1.0.0-beta.11",
+      "module": "@tetherto/wdk-wallet-evm",
       "displayName": "Arbitrum One",
+      "chainId": "eip155:42161",
       "indexerSlug": "arbitrum",
       "config": {
         "chainId": 42161,
         "provider": "https://arb1.arbitrum.io/rpc",
         "transferMaxFee": 1000000000000000
+      },
+      "providers": {
+        "symbiosis": { "chain": 42161 }
       }
     },
     "base": {
-      "module": "@tetherto/wdk-wallet-evm@1.0.0-beta.11",
+      "module": "@tetherto/wdk-wallet-evm",
       "displayName": "Base",
+      "chainId": "eip155:8453",
       "config": {
         "chainId": 8453,
         "provider": "https://mainnet.base.org",
         "transferMaxFee": 1000000000000000
+      },
+      "providers": {
+        "symbiosis": { "chain": 8453 }
       }
     },
     "bsc": {
-      "module": "@tetherto/wdk-wallet-evm@1.0.0-beta.11",
+      "module": "@tetherto/wdk-wallet-evm",
       "displayName": "BNB Smart Chain",
+      "chainId": "eip155:56",
       "config": {
         "chainId": 56,
         "provider": "https://bsc-dataseed.binance.org",
         "transferMaxFee": 5000000000000000
+      },
+      "providers": {
+        "symbiosis": { "chain": 56 }
       }
     },
     "avalanche": {
-      "module": "@tetherto/wdk-wallet-evm@1.0.0-beta.11",
+      "module": "@tetherto/wdk-wallet-evm",
       "displayName": "Avalanche C-Chain",
+      "chainId": "eip155:43114",
       "config": {
         "chainId": 43114,
         "provider": "https://api.avax.network/ext/bc/C/rpc",
         "transferMaxFee": 5000000000000000
+      },
+      "providers": {
+        "symbiosis": { "chain": 43114 }
       }
     },
     "solana": {
-      "module": "@tetherto/wdk-wallet-solana@1.0.0-beta.7",
+      "module": "@tetherto/wdk-wallet-solana",
       "displayName": "Solana",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
       "config": {
         "rpcUrl": "https://api.mainnet-beta.solana.com"
       }
     },
     "solana-testnet": {
-      "module": "@tetherto/wdk-wallet-solana@1.0.0-beta.7",
+      "module": "@tetherto/wdk-wallet-solana",
       "displayName": "Solana Testnet",
+      "chainId": "solana:4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z",
       "testnet": true,
       "config": {
         "rpcUrl": "https://api.testnet.solana.com"
       }
     },
     "solana-devnet": {
-      "module": "@tetherto/wdk-wallet-solana@1.0.0-beta.7",
+      "module": "@tetherto/wdk-wallet-solana",
       "displayName": "Solana Devnet",
+      "chainId": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
       "testnet": true,
       "config": {
         "rpcUrl": "https://api.devnet.solana.com"
       }
     },
     "spark": {
-      "module": "@tetherto/wdk-wallet-spark@1.0.0-beta.17",
+      "module": "@tetherto/wdk-wallet-spark",
       "displayName": "Spark",
+      "chainId": "spark:mainnet",
       "indexerSlug": "spark",
       "config": {
         "network": "MAINNET"
       }
     },
     "spark-regtest": {
-      "module": "@tetherto/wdk-wallet-spark@1.0.0-beta.17",
+      "module": "@tetherto/wdk-wallet-spark",
       "displayName": "Spark Regtest",
+      "chainId": "spark:regtest",
       "testnet": true,
       "config": {
         "network": "REGTEST"
       }
     },
     "tron": {
-      "module": "@tetherto/wdk-wallet-tron@1.0.0-beta.4",
+      "module": "@tetherto/wdk-wallet-tron",
       "displayName": "Tron",
+      "chainId": "tron:mainnet",
       "indexerSlug": "tron",
       "config": {
         "provider": "https://api.trongrid.io",
@@ -169,8 +272,9 @@
       }
     },
     "tron-testnet": {
-      "module": "@tetherto/wdk-wallet-tron@1.0.0-beta.4",
+      "module": "@tetherto/wdk-wallet-tron",
       "displayName": "Tron Testnet (Shasta)",
+      "chainId": "tron:shasta",
       "testnet": true,
       "config": {
         "provider": "https://api.shasta.trongrid.io",
@@ -178,8 +282,9 @@
       }
     },
     "smart-account-ethereum": {
-      "module": "@tetherto/wdk-wallet-evm-erc-4337@1.0.0-beta.6",
+      "module": "@tetherto/wdk-wallet-evm-erc-4337",
       "displayName": "Smart Account Ethereum",
+      "chainId": "eip155:1",
       "indexerSlug": "ethereum",
       "config": {
         "chainId": 1,
@@ -197,8 +302,9 @@
       }
     },
     "smart-account-sepolia": {
-      "module": "@tetherto/wdk-wallet-evm-erc-4337@1.0.0-beta.6",
+      "module": "@tetherto/wdk-wallet-evm-erc-4337",
       "displayName": "Smart Account Sepolia",
+      "chainId": "eip155:11155111",
       "testnet": true,
       "indexerSlug": "sepolia",
       "config": {
@@ -217,8 +323,9 @@
       }
     },
     "smart-account-polygon": {
-      "module": "@tetherto/wdk-wallet-evm-erc-4337@1.0.0-beta.6",
+      "module": "@tetherto/wdk-wallet-evm-erc-4337",
       "displayName": "Smart Account Polygon",
+      "chainId": "eip155:137",
       "indexerSlug": "polygon",
       "config": {
         "chainId": 137,
@@ -236,8 +343,9 @@
       }
     },
     "smart-account-arbitrum": {
-      "module": "@tetherto/wdk-wallet-evm-erc-4337@1.0.0-beta.6",
+      "module": "@tetherto/wdk-wallet-evm-erc-4337",
       "displayName": "Smart Account Arbitrum",
+      "chainId": "eip155:42161",
       "indexerSlug": "arbitrum",
       "config": {
         "chainId": 42161,
@@ -255,8 +363,9 @@
       }
     },
     "smart-account-base": {
-      "module": "@tetherto/wdk-wallet-evm-erc-4337@1.0.0-beta.6",
+      "module": "@tetherto/wdk-wallet-evm-erc-4337",
       "displayName": "Smart Account Base",
+      "chainId": "eip155:8453",
       "config": {
         "chainId": 8453,
         "blockchain": "base",
@@ -273,8 +382,9 @@
       }
     },
     "smart-account-plasma": {
-      "module": "@tetherto/wdk-wallet-evm-erc-4337@1.0.0-beta.6",
+      "module": "@tetherto/wdk-wallet-evm-erc-4337",
       "displayName": "Smart Account Plasma",
+      "chainId": "eip155:9745",
       "config": {
         "chainId": 9745,
         "blockchain": "plasma",

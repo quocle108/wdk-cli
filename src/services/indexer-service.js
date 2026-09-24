@@ -15,7 +15,10 @@
 import { configService } from './config-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { walletsFile } from '../config/wdk-config.js'
-import { getAllTokens, getIndexerCode, getTokensSupportedBy } from './token-service.js'
+import { getAllTokens, getTokenByName, tokenSlugValue, getTokensSupportedBy } from './token-service.js'
+import { getOwn } from './override-service.js'
+/** The external system key the indexer's token slugs are registered under. */
+const INDEXER = 'indexer'
 
 /**
  * @typedef {Object} TokenTransfer
@@ -62,7 +65,7 @@ for (const [name, entry] of Object.entries(walletsFile.networks)) {
 
 /**
  * The universe of indexer token codes known to any registered token.
- * Derived from `metadata.indexerSlug` across the whole token registry.
+ * Derived from each token's indexer slug across the whole token registry.
  *
  * @type {readonly string[]}
  */
@@ -70,7 +73,7 @@ export const INDEXER_TOKENS = [
   ...new Set(
     Object.values(getAllTokens()).flatMap((tokens) =>
       Object.values(tokens)
-        .map((t) => t.metadata?.indexerSlug)
+        .map((t) => tokenSlugValue(t, INDEXER))
         .filter((c) => typeof c === 'string' && c.length > 0)
     )
   )
@@ -90,23 +93,22 @@ export const INDEXER_TOKENS = [
  * @returns {string | undefined} The chain slug, or undefined if not configured.
  */
 export function getIndexerSlug (network) {
-  if (BUILTIN_INDEXER_SLUGS[network]) return BUILTIN_INDEXER_SLUGS[network]
-  return /** @type {string | undefined} */ (
+  return getOwn(BUILTIN_INDEXER_SLUGS, network) ?? /** @type {string | undefined} */ (
     configService.get(`customNetworks.${network}.indexerSlug`)
   )
 }
 
 /**
  * Returns the indexer codes supported for a network, collected from the token
- * registry's `metadata.indexerSlug` field on each entry.
+ * registry's indexer slug on each entry.
  *
  * @param {string} network - The network name.
  * @returns {string[]} Array of indexer token codes (e.g. ["usdt", "btc"]).
  */
 export function getIndexerTokens (network) {
   const codes = new Set()
-  for (const token of getTokensSupportedBy(network, 'indexerSlug')) {
-    const code = getIndexerCode(network, token)
+  for (const token of getTokensSupportedBy(network, INDEXER)) {
+    const code = tokenSlugValue(getTokenByName(network, token), INDEXER)
     if (code) codes.add(code)
   }
   return [...codes]
@@ -147,7 +149,7 @@ export async function getTokenTransfers (network, token, address, options = {}) 
 
   if (!baseUrl) {
     throw new WdkCliError(
-      'Indexer base URL not configured. Set indexer.baseUrl or WDK_INDEXER_BASE_URL.',
+      'Indexer base URL not configured. Set it with: wdk config set --key indexer.baseUrl --value <url>',
       ErrorCode.MISSING_CONFIG
     )
   }
@@ -170,8 +172,8 @@ export async function getTokenTransfers (network, token, address, options = {}) 
     if (response.status === 403) {
       throw new WdkCliError(
         'Indexer API error: 403 Forbidden. Please set your API key or use a proxy API for the indexer provider:\n' +
-          '  wdk config set indexer.apiKey <your-api-key>\n' +
-          '  wdk config set indexer.baseUrl <your-proxy-url>',
+          '  wdk config set --key indexer.apiKey --value <your-api-key>\n' +
+          '  wdk config set --key indexer.baseUrl --value <your-proxy-url>',
         ErrorCode.NETWORK_ERROR
       )
     }
@@ -199,7 +201,7 @@ export async function getTokenTransfersBatch (items) {
 
   if (!baseUrl) {
     throw new WdkCliError(
-      'Indexer base URL not configured. Set indexer.baseUrl or WDK_INDEXER_BASE_URL.',
+      'Indexer base URL not configured. Set it with: wdk config set --key indexer.baseUrl --value <url>',
       ErrorCode.MISSING_CONFIG
     )
   }

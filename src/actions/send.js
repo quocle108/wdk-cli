@@ -14,6 +14,7 @@
 
 import { daemonClient } from '../daemon/client.js'
 import { validateNetwork, getNetworkConfig } from '../config/networks.js'
+import { validateRecipient } from '../services/address-service.js'
 import { convertToUsd } from '../services/price-service.js'
 import { formatAmount, formatTokenAmount } from '../ui/formatters.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
@@ -32,6 +33,7 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  * @typedef {Object} SendPreview
  * @property {string} network - The blockchain network name.
  * @property {string} networkName - Human-readable network display name.
+ * @property {string} from - Sender address.
  * @property {string} to - Recipient address.
  * @property {string} amount - Amount in base units.
  * @property {string} amountFormatted - Human-readable formatted amount with symbol.
@@ -80,6 +82,7 @@ function validateAmount (amount) {
 export async function previewSend (input) {
   const wallet = await daemonClient.requireUnlocked(input.wallet)
   validateNetwork(input.network)
+  validateRecipient(input.network, input.to)
   validateAmount(input.amount)
 
   const feeQuote = await daemonClient.estimateFee(
@@ -116,6 +119,7 @@ export async function previewSend (input) {
   return {
     network: input.network,
     networkName: networkConfig.displayName,
+    from: feeQuote.from,
     to: input.to,
     amount: input.amount,
     amountFormatted,
@@ -137,6 +141,7 @@ export async function previewSend (input) {
 export async function executeSend (input) {
   const wallet = await daemonClient.requireUnlocked(input.wallet)
   validateNetwork(input.network)
+  validateRecipient(input.network, input.to)
   validateAmount(input.amount)
 
   const networkConfig = getNetworkConfig(input.network)

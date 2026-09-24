@@ -20,14 +20,26 @@ import {
   isTestnet,
   getNetworkConfig,
   getAllNetworks,
+  getAllNetworksIncludingDisabled,
   getAllNetworkNames,
   isCustomNetwork,
   isBuiltinNetwork,
   getCustomNetworks,
+  setNetworkEnabled,
+  isNetworkDisabled,
   saveCustomNetwork,
-  deleteCustomNetwork
+  deleteCustomNetwork,
+  getChainId
 } from '../../../src/config/networks.js'
 import { configService } from '../../../src/services/config-service.js'
+
+const BUILT_IN_NETWORK_NAMES = [
+  'bitcoin', 'bitcoin-testnet3', 'ethereum', 'sepolia', 'polygon', 'arbitrum',
+  'base', 'bsc', 'avalanche', 'solana', 'solana-testnet', 'solana-devnet',
+  'spark', 'spark-regtest', 'tron', 'tron-testnet', 'smart-account-ethereum',
+  'smart-account-sepolia', 'smart-account-polygon', 'smart-account-arbitrum',
+  'smart-account-base', 'smart-account-plasma'
+]
 
 describe('networks', () => {
   it('validates network names', () => {
@@ -53,17 +65,29 @@ describe('networks', () => {
     expect(isTestnet('smart-account-ethereum')).toBe(false)
   })
 
-  it('all built-in networks have required fields', () => {
-    for (const network of NETWORK_NAMES) {
-      const config = NETWORKS[network]
-      expect(config.name).toBe(network)
-      expect(config.displayName).toBeTruthy()
-      expect(config.module).toMatch(
-        /^@tetherto\/wdk-wallet-(evm|btc|solana|spark|evm-erc-4337|tron)(@.+)?$/
-      )
-      expect(config.nativeSymbol).toBeTruthy()
-      expect(config.decimals).toBeGreaterThan(0)
-    }
+  it('exposes the built-in network list', () => {
+    expect(NETWORK_NAMES).toEqual(BUILT_IN_NETWORK_NAMES)
+  })
+
+  it('builds complete configs for built-in networks', () => {
+    expect(NETWORKS.ethereum).toEqual({
+      name: 'ethereum',
+      displayName: 'Ethereum',
+      type: '@tetherto/wdk-wallet-evm',
+      module: '@tetherto/wdk-wallet-evm',
+      nativeSymbol: 'ETH',
+      decimals: 18,
+      testnet: false
+    })
+    expect(NETWORKS.bitcoin).toEqual({
+      name: 'bitcoin',
+      displayName: 'Bitcoin',
+      type: '@tetherto/wdk-wallet-btc',
+      module: '@tetherto/wdk-wallet-btc',
+      nativeSymbol: 'BTC',
+      decimals: 8,
+      testnet: false
+    })
   })
 
   it('identifies built-in networks', () => {
@@ -73,8 +97,34 @@ describe('networks', () => {
   })
 })
 
+describe('getChainId', () => {
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
+  it('returns the chain id for built-in networks', () => {
+    expect(getChainId('ethereum')).toBe('eip155:1')
+    expect(getChainId('tron')).toBe('tron:mainnet')
+    expect(getChainId('bitcoin')).toBe('bip122:000000000019d6689c085ae165831e93')
+  })
+
+  it('returns the configured chain id for custom networks', () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'customNetworks.linea.chainId' ? 'eip155:59144' : undefined
+    )
+
+    expect(getChainId('linea')).toBe('eip155:59144')
+  })
+
+  it('falls back to a synthetic id for networks without one', () => {
+    jest.spyOn(configService, 'get').mockImplementation(() => undefined)
+
+    expect(getChainId('mystery-net')).toBe('wdk:mystery-net')
+  })
+})
+
 describe('custom networks', () => {
-  const mockCustomNetwork = {
+  const DUMMY_CUSTOM_NETWORK = {
     name: 'optimism',
     displayName: 'Optimism',
     type: '@tetherto/wdk-wallet-evm',
@@ -88,7 +138,7 @@ describe('custom networks', () => {
   beforeEach(() => {
     jest.spyOn(configService, 'get').mockImplementation((key) => {
       if (key === 'customNetworks') {
-        return { optimism: mockCustomNetwork }
+        return { optimism: DUMMY_CUSTOM_NETWORK }
       }
       return undefined
     })
@@ -99,22 +149,17 @@ describe('custom networks', () => {
   })
 
   it('returns custom networks from config', () => {
-    const custom = getCustomNetworks()
-    expect(Object.prototype.hasOwnProperty.call(custom, 'optimism')).toBe(true)
-    expect(custom.optimism.displayName).toBe('Optimism')
-    expect(custom.optimism.custom).toBe(true)
+    expect(getCustomNetworks()).toEqual({
+      optimism: { ...DUMMY_CUSTOM_NETWORK, nativeSymbol: undefined, decimals: undefined }
+    })
   })
 
   it('getAllNetworks merges built-in and custom', () => {
-    const all = getAllNetworks()
-    expect(Object.prototype.hasOwnProperty.call(all, 'ethereum')).toBe(true)
-    expect(Object.prototype.hasOwnProperty.call(all, 'optimism')).toBe(true)
+    expect(Object.keys(getAllNetworks())).toEqual([...BUILT_IN_NETWORK_NAMES, 'optimism'])
   })
 
   it('getAllNetworkNames includes custom networks', () => {
-    const names = getAllNetworkNames()
-    expect(names).toContain('ethereum')
-    expect(names).toContain('optimism')
+    expect(getAllNetworkNames()).toEqual([...BUILT_IN_NETWORK_NAMES, 'optimism'])
   })
 
   it('isValidNetwork accepts custom networks', () => {
@@ -128,10 +173,9 @@ describe('custom networks', () => {
   })
 
   it('getNetworkConfig returns custom network config', () => {
-    const config = getNetworkConfig('optimism')
-    expect(config.displayName).toBe('Optimism')
-    expect(config.module).toBe('@tetherto/wdk-wallet-evm')
-    expect(config.custom).toBe(true)
+    expect(getNetworkConfig('optimism')).toEqual({
+      ...DUMMY_CUSTOM_NETWORK, nativeSymbol: undefined, decimals: undefined
+    })
   })
 
   it('isTestnet works with custom networks', () => {
@@ -141,7 +185,7 @@ describe('custom networks', () => {
     jest.spyOn(configService, 'get').mockImplementation((key) => {
       if (key === 'customNetworks') {
         return {
-          'optimism-testnet': { ...mockCustomNetwork, name: 'optimism-testnet', testnet: true }
+          'optimism-testnet': { ...DUMMY_CUSTOM_NETWORK, name: 'optimism-testnet', testnet: true }
         }
       }
       return undefined
@@ -152,9 +196,9 @@ describe('custom networks', () => {
 
   it('saveCustomNetwork stores to config', () => {
     const setMock = jest.spyOn(configService, 'set').mockImplementation(() => {})
-    saveCustomNetwork('linea', mockCustomNetwork)
+    saveCustomNetwork('linea', DUMMY_CUSTOM_NETWORK)
     expect(setMock).toHaveBeenCalledTimes(1)
-    expect(setMock.mock.calls[0]).toEqual(['customNetworks.linea', mockCustomNetwork])
+    expect(setMock.mock.calls[0]).toEqual(['customNetworks.linea', DUMMY_CUSTOM_NETWORK])
   })
 
   it('deleteCustomNetwork removes from config', () => {
@@ -169,5 +213,279 @@ describe('custom networks', () => {
     jest.spyOn(configService, 'get').mockImplementation(() => undefined)
     const custom = getCustomNetworks()
     expect(custom).toEqual({})
+  })
+})
+
+describe('network overrides', () => {
+  const DUMMY_CUSTOM_NETWORK = {
+    name: 'mychain',
+    displayName: 'mychain',
+    type: '@tetherto/wdk-wallet-evm',
+    module: '@tetherto/wdk-wallet-evm',
+    custom: true,
+    testnet: false
+  }
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+  })
+
+  const withOverrides = (overrides) => {
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'overrides' ? overrides : undefined
+    )
+  }
+
+  it('hides a disabled network and reports it as disabled', () => {
+    withOverrides({ networks: { tron: { enabled: false } } })
+
+    expect(isValidNetwork('tron')).toBe(false)
+    expect(getAllNetworkNames()).toEqual(BUILT_IN_NETWORK_NAMES.filter((n) => n !== 'tron'))
+    expect(() => getNetworkConfig('tron')).toThrow("Network 'tron' is disabled.")
+  })
+
+  it('disables a built-in network', () => {
+    const setMock = jest.spyOn(configService, 'set').mockImplementation(() => {})
+    withOverrides(undefined)
+
+    expect(setNetworkEnabled('tron', false)).toBe(false)
+    expect(setMock).toHaveBeenCalledWith('overrides', { networks: { tron: { enabled: false } } })
+  })
+
+  it('enables a disabled network by removing the delta', () => {
+    const deleteMock = jest.spyOn(configService, 'delete').mockImplementation(() => {})
+    withOverrides({ networks: { tron: { enabled: false } } })
+
+    expect(setNetworkEnabled('tron', true)).toBe(false)
+    expect(deleteMock).toHaveBeenCalledWith('overrides')
+  })
+
+  it('rejects a network already in the desired state', () => {
+    withOverrides(undefined)
+
+    expect(() => setNetworkEnabled('tron', true)).toThrow("'tron' is already enabled.")
+  })
+
+  it('rejects a module name, since only network names match', () => {
+    withOverrides(undefined)
+
+    expect(() => setNetworkEnabled('@tetherto/wdk-wallet-tron', false)).toThrow(
+      "'@tetherto/wdk-wallet-tron' is not a network."
+    )
+  })
+
+  it('rejects an unknown name', () => {
+    withOverrides(undefined)
+
+    expect(() => setNetworkEnabled('nope', false)).toThrow("'nope' is not a network.")
+  })
+
+  it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__'])(
+    'rejects the inherited object property %s as a network name', (name) => {
+      withOverrides(undefined)
+      const setMock = jest.spyOn(configService, 'set').mockImplementation(() => {})
+
+      expect(isValidNetwork(name)).toBe(false)
+      expect(isCustomNetwork(name)).toBe(false)
+      expect(isNetworkDisabled(name)).toBe(false)
+      expect(() => setNetworkEnabled(name, false)).toThrow(`'${name}' is not a network.`)
+      expect(setMock).not.toHaveBeenCalled()
+    }
+  )
+
+  const withDisabledCustomNetwork = () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) => {
+      if (key === 'customNetworks') return { mychain: DUMMY_CUSTOM_NETWORK }
+      if (key === 'overrides') return { networks: { mychain: { enabled: false } } }
+      return undefined
+    })
+  }
+
+  it('disables a custom network', () => {
+    const setMock = jest.spyOn(configService, 'set').mockImplementation(() => {})
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'customNetworks' ? { mychain: DUMMY_CUSTOM_NETWORK } : undefined
+    )
+
+    expect(setNetworkEnabled('mychain', false)).toBe(false)
+    expect(setMock).toHaveBeenCalledWith('overrides', { networks: { mychain: { enabled: false } } })
+  })
+
+  it('isValidNetwork rejects a disabled custom network', () => {
+    withDisabledCustomNetwork()
+
+    expect(isValidNetwork('mychain')).toBe(false)
+  })
+
+  it('isNetworkDisabled identifies a disabled custom network', () => {
+    withDisabledCustomNetwork()
+
+    expect(isNetworkDisabled('mychain')).toBe(true)
+    expect(isNetworkDisabled('ethereum')).toBe(false)
+    expect(isNetworkDisabled('nope')).toBe(false)
+  })
+
+  it('getNetworkConfig resolves a disabled custom network for inspection', () => {
+    withDisabledCustomNetwork()
+
+    expect(getNetworkConfig('mychain', { includeDisabled: true })).toEqual({
+      ...DUMMY_CUSTOM_NETWORK,
+      nativeSymbol: undefined,
+      decimals: undefined
+    })
+  })
+
+  it('clears the override when the custom network is deleted', () => {
+    const deleteMock = jest.spyOn(configService, 'delete').mockImplementation(() => {})
+    jest.spyOn(configService, 'get').mockImplementation((key) =>
+      key === 'overrides' ? { networks: { mychain: { enabled: false } } } : undefined
+    )
+
+    deleteCustomNetwork('mychain')
+
+    expect(deleteMock).toHaveBeenCalledWith('customNetworks.mychain')
+    expect(deleteMock).toHaveBeenCalledWith('overrides')
+  })
+
+  it('drops the token overrides of a deleted custom network, keeping other networks', () => {
+    jest.spyOn(configService, 'delete').mockImplementation(() => {})
+    const setMock = jest.spyOn(configService, 'set').mockImplementation(() => {})
+    let overrides = {
+      tokens: { 'mychain/mytok': { enabled: false }, 'mychain/other': { enabled: false }, 'ethereum/usdt': { enabled: false } }
+    }
+    jest.spyOn(configService, 'get').mockImplementation((key) => (key === 'overrides' ? overrides : undefined))
+    setMock.mockImplementation((key, value) => { if (key === 'overrides') overrides = value })
+
+    deleteCustomNetwork('mychain')
+
+    expect(overrides).toEqual({ tokens: { 'ethereum/usdt': { enabled: false } } })
+  })
+
+  it('clears a stale override on enable', () => {
+    const deleteMock = jest.spyOn(configService, 'delete').mockImplementation(() => {})
+    withOverrides({ networks: { 'gone-net': { enabled: false } } })
+
+    expect(setNetworkEnabled('gone-net', true)).toBe(true)
+    expect(deleteMock).toHaveBeenCalledWith('overrides')
+  })
+
+  it('hides all networks of a disabled wallet module', () => {
+    withOverrides({ modules: { '@tetherto/wdk-wallet-solana': { enabled: false } } })
+
+    expect(getAllNetworkNames()).toEqual(
+      BUILT_IN_NETWORK_NAMES.filter((n) => !n.startsWith('solana'))
+    )
+    expect(() => getNetworkConfig('solana')).toThrow("Network 'solana' is disabled.")
+  })
+
+  it('keeps the testnet flag on a network the user disabled', () => {
+    withOverrides({ networks: { sepolia: { enabled: false } } })
+
+    expect(isTestnet('sepolia')).toBe(true)
+    expect(isTestnet('ethereum')).toBe(false)
+  })
+
+  it('hides a module-disabled network from listings but keeps a self-disabled one', () => {
+    withOverrides({
+      networks: { tron: { enabled: false } },
+      modules: { '@tetherto/wdk-wallet-solana': { enabled: false } }
+    })
+
+    const listed = Object.keys(getAllNetworksIncludingDisabled())
+
+    expect(listed).toEqual(NETWORK_NAMES.filter((n) => !n.startsWith('solana')))
+    expect(isNetworkDisabled('tron')).toBe(true)
+    expect(isNetworkDisabled('solana')).toBe(false)
+  })
+
+  it('points a module-disabled network at its module instead of enabling it', () => {
+    withOverrides({ modules: { '@tetherto/wdk-wallet-solana': { enabled: false } } })
+
+    expect(() => setNetworkEnabled('solana', true)).toThrow(
+      "Network 'solana' is disabled by its module."
+    )
+  })
+
+  it('refuses to disable a module-disabled network', () => {
+    withOverrides({ modules: { '@tetherto/wdk-wallet-solana': { enabled: false } } })
+    const setMock = jest.spyOn(configService, 'set').mockImplementation(() => {})
+
+    expect(() => setNetworkEnabled('solana', false)).toThrow(
+      "Network 'solana' is disabled by its module."
+    )
+    expect(setMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses to enable a self-disabled network while its module is disabled', () => {
+    withOverrides({
+      networks: { solana: { enabled: false } },
+      modules: { '@tetherto/wdk-wallet-solana': { enabled: false } }
+    })
+    const deleteMock = jest.spyOn(configService, 'delete').mockImplementation(() => {})
+
+    expect(() => setNetworkEnabled('solana', true)).toThrow(
+      "Network 'solana' is disabled by its module."
+    )
+    expect(deleteMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps a self-disabled network hidden while its module is disabled', () => {
+    withOverrides({
+      networks: { solana: { enabled: false } },
+      modules: { '@tetherto/wdk-wallet-solana': { enabled: false } }
+    })
+
+    expect(Object.keys(getAllNetworksIncludingDisabled())).toEqual(
+      NETWORK_NAMES.filter((n) => !n.startsWith('solana'))
+    )
+  })
+
+  it('points a self-disabled network at its module when both are disabled', () => {
+    withOverrides({
+      networks: { solana: { enabled: false } },
+      modules: { '@tetherto/wdk-wallet-solana': { enabled: false } }
+    })
+
+    let error
+    try { getNetworkConfig('solana') } catch (e) { error = e }
+    expect(error.message).toBe("Network 'solana' is disabled.")
+    expect(error.suggestion).toBe('Enable its module with: wdk module enable --name @tetherto/wdk-wallet-solana')
+  })
+
+  it('applies a module replacement to a network', () => {
+    withOverrides({ networks: { ethereum: { module: '@acme/evm-wallet' } } })
+
+    expect(getAllNetworks().ethereum).toEqual({
+      name: 'ethereum',
+      displayName: 'Ethereum',
+      type: '@acme/evm-wallet',
+      module: '@acme/evm-wallet',
+      nativeSymbol: 'ETH',
+      decimals: 18,
+      testnet: false
+    })
+  })
+
+  it('hides custom networks whose module is disabled', () => {
+    jest.spyOn(configService, 'get').mockImplementation((key) => {
+      if (key === 'overrides') {
+        return { modules: { '@tetherto/wdk-wallet-evm': { enabled: false } } }
+      }
+      if (key === 'customNetworks') {
+        return { mychain: { name: 'mychain', module: '@tetherto/wdk-wallet-evm' } }
+      }
+      return undefined
+    })
+
+    expect(isValidNetwork('mychain')).toBe(false)
+    expect(isValidNetwork('ethereum')).toBe(false)
+    expect(isValidNetwork('bitcoin')).toBe(true)
+  })
+
+  it('leaves the raw built-in registry untouched', () => {
+    withOverrides({ networks: { tron: { enabled: false } } })
+
+    expect(isBuiltinNetwork('tron')).toBe(true)
+    expect(NETWORK_NAMES).toEqual(BUILT_IN_NETWORK_NAMES)
   })
 })

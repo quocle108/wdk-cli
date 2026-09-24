@@ -14,13 +14,15 @@
 
 import WDK from '@tetherto/wdk'
 import chalk from 'chalk'
-import { isValidNetwork, getNetworkConfig, parseModuleName } from '../config/networks.js'
+import { getNetworkConfig, parseModuleName } from '../config/networks.js'
+import { walletsFile } from '../config/wdk-config.js'
+import { getAllModules, getInstalledVersion, isRegisteredModule } from './module-service.js'
 import { configService } from './config-service.js'
 import { CONFIG_DEFAULTS } from '../config/constants.js'
 import { WdkCliError, ErrorCode, isNetworkError } from '../errors/index.js'
 
 /** @typedef {typeof import('@tetherto/wdk-wallet').default} WalletManagerCtor */
-/** @typedef {import('@tetherto/wdk').IWalletAccountWithProtocols} WalletAccount */
+/** @typedef {import('@tetherto/wdk').WdkAccount} WalletAccount */
 
 /** @type {Map<string, WalletManagerCtor>} */
 const walletManagerCache = new Map()
@@ -30,12 +32,24 @@ const walletManagerCache = new Map()
  *
  * @param {string} moduleSpec - The npm module specifier, e.g. `@tetherto/wdk-wallet` or `@scope/pkg@1.2.3`.
  * @returns {Promise<WalletManagerCtor>} The default export of the wallet manager module.
+ * @throws {WdkCliError} UNSUPPORTED_MODULE when the package is not registered.
+ * @throws {WdkCliError} UNSUPPORTED_MODULE when the package is registered but not installed.
  */
 async function loadWalletManager (moduleSpec) {
   const cached = walletManagerCache.get(moduleSpec)
   if (cached) return cached
 
-  const { name, version } = parseModuleName(moduleSpec)
+  const parsed = parseModuleName(moduleSpec)
+  const name = parsed.name
+  const version = parsed.version || getAllModules()[name]?.version
+
+  if (!isRegisteredModule(name)) {
+    throw new WdkCliError(
+      `Wallet module '${name}' is not registered.`,
+      ErrorCode.UNSUPPORTED_MODULE,
+      `Add it first with: wdk module add --name ${name}`
+    )
+  }
 
   try {
     const mod = await import(name)
@@ -43,19 +57,16 @@ async function loadWalletManager (moduleSpec) {
     const Manager = mod.default || mod
 
     if (version) {
-      try {
-        const { createRequire } = await import('node:module')
-        const require = createRequire(import.meta.url)
-        const pkg = require(`${name}/package.json`)
-        if (pkg.version && pkg.version !== version) {
-          console.error(
-            chalk.yellow(
-              `Warning: ${name} installed ${pkg.version}, config expects ${version}. Run: npm install ${moduleSpec}`
-            )
+      const installed = getInstalledVersion(name)
+      if (installed && installed !== version) {
+        const repair = walletsFile.modules?.[name]
+          ? 'npm install'
+          : `wdk module add --name ${name}`
+        console.error(
+          chalk.yellow(
+            `Warning: ${name} installed ${installed}, config expects ${version}. Run: ${repair}`
           )
-        }
-      } catch {
-        /* skip check if package.json not readable */
+        )
       }
     }
 
@@ -63,10 +74,13 @@ async function loadWalletManager (moduleSpec) {
     return Manager
   } catch (err) {
     if (err?.code === 'ERR_MODULE_NOT_FOUND' || err?.code === 'MODULE_NOT_FOUND') {
+      const suggestion = walletsFile.modules?.[name]
+        ? 'Reinstall the CLI dependencies with: npm install'
+        : `Install it with: wdk module add --name ${name}`
       throw new WdkCliError(
-        `Wallet module '${moduleSpec}' is not installed.`,
+        `Wallet module '${name}' is not installed.`,
         ErrorCode.UNSUPPORTED_MODULE,
-        `Install it with: npm install ${moduleSpec}`
+        suggestion
       )
     }
     throw err
@@ -80,6 +94,11 @@ export class WdkService {
   constructor () {
     /** @type {WDK | null} */
     this.wdk = null
+    /**
+     * Retained only so dispose() can zero it — WDK never scrubs its own seed.
+     * @type {Buffer | null}
+     */
+    this.seed = null
     /** @type {Set<string>} */
     this.registeredNetworks = new Set()
     /** @type {Map<string, WalletAccount>} */
@@ -87,36 +106,15 @@ export class WdkService {
   }
 
   /**
-   * Creates the underlying WDK instance from a seed phrase (no-op if already created).
+   * Creates the underlying WDK instance from a seed (no-op if already created).
    *
-   * @param {string} seedPhrase - The BIP-39 seed phrase.
+   * @param {string | Buffer} seed - A BIP-39 mnemonic string, or a raw master seed Buffer.
    * @returns {void}
    */
-  createInstance (seedPhrase) {
+  createInstance (seed) {
     if (!this.wdk) {
-      this.wdk = new WDK(seedPhrase)
-    }
-  }
-
-  /**
-   * Initialises the WDK instance and registers the given network.
-   *
-   * @param {string} seedPhrase - The BIP-39 seed phrase.
-   * @param {string} network - The network name to register.
-   * @returns {Promise<void>}
-   */
-  async initialize (seedPhrase, network) {
-    if (!isValidNetwork(network)) {
-      throw new WdkCliError(
-        `Network '${network}' is not supported.`,
-        ErrorCode.NETWORK_NOT_SUPPORTED
-      )
-    }
-
-    this.createInstance(seedPhrase)
-
-    if (!this.registeredNetworks.has(network)) {
-      await this.#registerNetwork(network)
+      this.wdk = new WDK(seed)
+      this.seed = Buffer.isBuffer(seed) ? seed : null
     }
   }
 
@@ -200,9 +198,12 @@ export class WdkService {
   dispose () {
     if (this.wdk) {
       this.wdk.dispose()
+      if (this.seed) this.seed.fill(0)
+      this.seed = null
       this.wdk = null
       this.registeredNetworks.clear()
       this.accountCache.clear()
+      walletManagerCache.clear()
     }
   }
 }

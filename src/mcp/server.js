@@ -22,8 +22,12 @@ import { getBalance, getAllBalances } from '../actions/balance.js'
 import { getAddress, getAllAddresses } from '../actions/address.js'
 import { getHistory } from '../actions/history.js'
 import { previewSend, executeSend } from '../actions/send.js'
+import { signMessage, verifyMessage } from '../actions/message.js'
+import { getTransaction, FINALITY_TARGETS } from '../actions/transaction.js'
+import { previewSwap, executeSwap } from '../actions/swap.js'
 import { createRampUrl } from '../actions/ramp.js'
 import { listTokens, getToken } from '../actions/token.js'
+import { listMethods, listAllMethods, callMethod } from '../actions/method.js'
 import { resolveTokenIdentifier, toBaseUnits } from '../services/token-service.js'
 
 /** @typedef {{ content: { type: 'text', text: string }[], isError?: boolean }} ToolResult */
@@ -198,7 +202,7 @@ export async function startMcpServer () {
       description: 'Get transaction history for a network (requires indexer API)',
       inputSchema: {
         network: z.string().describe('Network name (required)'),
-        token: z.string().optional().describe('Token filter (e.g. usdt, default: usdt)'),
+        token: z.string().optional().describe('Token filter (e.g. usdt, default: all tokens)'),
         limit: z.number().optional().default(30).describe('Max results (default: 30)'),
         index: z.number().optional().default(0).describe('Account index (default: 0)'),
         fromDate: z.string().optional().describe('Start date (ISO 8601, e.g. 2026-01-01)'),
@@ -209,6 +213,58 @@ export async function startMcpServer () {
     async ({ network, token, limit, index, fromDate, toDate, wallet }) => {
       try {
         const result = await getHistory({ network, index, token, limit, fromDate, toDate, wallet })
+        return jsonResult(result)
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
+    'list_methods',
+    {
+      description:
+        'List a wallet module\'s chain-specific methods. Prefer a dedicated tool when one exists. Omit network to list every module\'s methods. Each entry includes its kind (read or write) and parameter schema.',
+      inputSchema: {
+        network: z
+          .string()
+          .optional()
+          .describe('Network name (e.g. spark). Omit for all modules.')
+      }
+    },
+    async ({ network }) => {
+      try {
+        if (network) {
+          return jsonResult(listMethods({ network }))
+        }
+        return jsonResult(listAllMethods())
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
+    'call_method',
+    {
+      description:
+        'Invoke a declared method of a network\'s wallet module. Use list_methods first to discover names and parameter schemas. IMPORTANT: methods with kind "write" move funds or mutate state — show the exact method and args to the user and only call after they explicitly confirm.',
+      inputSchema: {
+        network: z.string().describe('Network name (e.g. spark)'),
+        name: z.string().describe('Method name (e.g. claimStaticDeposit)'),
+        args: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe(
+            'Method parameters as strings keyed by the declared camelCase name (e.g. {"maxFee": "1000"}, not the kebab-case CLI flag). bigint params take integer strings in base units; a structured param\'s value is a JSON-encoded string.'
+          ),
+        index: z.number().optional().default(0).describe('Account index (default: 0)'),
+        wallet: z.string().optional().describe('Wallet name (uses default wallet if omitted)')
+      }
+    },
+    async ({ network, name, args, index, wallet }) => {
+      try {
+        const result = await callMethod({ network, name, args, index, wallet })
         return jsonResult(result)
       } catch (e) {
         return errorResult(e)
@@ -280,6 +336,194 @@ export async function startMcpServer () {
     }
   )
 
+  server.registerTool(
+    'sign_message',
+    {
+      description:
+        'Sign an arbitrary message with the wallet account\'s private key. IMPORTANT: signatures can authorize actions on some chains — show the exact message to the user and only call after they explicitly confirm.',
+      inputSchema: {
+        network: z.string().describe('Network name (e.g. ethereum, bitcoin)'),
+        message: z.string().describe('Message to sign'),
+        index: z.number().optional().default(0).describe('Account index (default: 0)'),
+        wallet: z.string().optional().describe('Wallet name (uses default wallet if omitted)')
+      }
+    },
+    async ({ network, message, index, wallet }) => {
+      try {
+        const result = await signMessage({ network, message, index, wallet })
+        return jsonResult(result)
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
+    'swap_token',
+    {
+      description:
+        'Swap one token for another on the same chain (or cross-chain when toNetwork is set) via the best available protocol. IMPORTANT: Always call with dryRun=true first to preview the route and amounts, show it to the user, and only call again with dryRun=false after the user confirms.',
+      inputSchema: {
+        network: z.string().describe('Source network name (e.g. ethereum)'),
+        fromToken: z.string().describe('Token to sell (e.g. usdt). Use the token tool to list available ones.'),
+        toToken: z.string().describe('Token to buy (e.g. eth)'),
+        toNetwork: z
+          .string()
+          .optional()
+          .describe('Destination network for a cross-chain swap (default: source network)'),
+        amountIn: z
+          .string()
+          .optional()
+          .describe('Exact amount to sell (decimal, e.g. "100"). Mutually exclusive with amountOut.'),
+        amountOut: z
+          .string()
+          .optional()
+          .describe('Exact amount to receive (decimal, e.g. "0.05"). Mutually exclusive with amountIn.'),
+        recipient: z.string().optional().describe('Address that receives the output (default: your account)'),
+        protocol: z.string().optional().describe('Force a specific protocol; omit to use the best route'),
+        index: z.number().optional().default(0).describe('Account index (default: 0)'),
+        dryRun: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe('Preview without executing (default: true). Set false to execute.'),
+        wallet: z.string().optional().describe('Wallet name (uses default wallet if omitted)')
+      }
+    },
+    async ({ network, fromToken, toToken, toNetwork, amountIn, amountOut, recipient, protocol, index, dryRun, wallet }) => {
+      try {
+        const input = {
+          kind: /** @type {const} */ ('swap'),
+          network,
+          index,
+          fromToken,
+          toToken,
+          toNetwork,
+          amountIn,
+          amountOut,
+          recipient,
+          protocol,
+          wallet
+        }
+        if (dryRun) {
+          const preview = await previewSwap(input)
+          return jsonResult({
+            preview: true,
+            ...preview,
+            message: 'This is a dry-run preview. Call swap_token again with dryRun=false to execute.'
+          })
+        }
+        const result = await executeSwap(input)
+        return jsonResult({ success: true, ...result })
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
+    'verify_message',
+    {
+      description: 'Verify a message signature against the wallet account\'s key.',
+      inputSchema: {
+        network: z.string().describe('Network name (e.g. ethereum, bitcoin)'),
+        message: z.string().describe('Signed message'),
+        signature: z.string().describe('Signature to check'),
+        index: z.number().optional().default(0).describe('Account index (default: 0)'),
+        wallet: z.string().optional().describe('Wallet name (uses default wallet if omitted)')
+      }
+    },
+    async ({ network, message, signature, index, wallet }) => {
+      try {
+        const result = await verifyMessage({ network, message, signature, index, wallet })
+        return jsonResult(result)
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
+    'get_transaction',
+    {
+      description:
+        'Get a transaction\'s normalized receipt by hash. Optionally block until it reaches confirmed or final.',
+      inputSchema: {
+        network: z.string().describe('Network name (e.g. ethereum, bitcoin)'),
+        hash: z.string().describe('Transaction hash'),
+        finality: z
+          .enum(FINALITY_TARGETS)
+          .optional()
+          .describe('Block until this finality target is reached; omit to return the current state immediately'),
+        timeout: z
+          .number()
+          .optional()
+          .describe('Max wait in milliseconds (requires finality)'),
+        index: z.number().optional().default(0).describe('Account index (default: 0)'),
+        wallet: z.string().optional().describe('Wallet name (uses default wallet if omitted)')
+      }
+    },
+    async ({ network, hash, finality, timeout, index, wallet }) => {
+      try {
+        const result = await getTransaction({ network, hash, finality, timeout, index, wallet })
+        return jsonResult(result)
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
+  server.registerTool(
+    'bridge_token',
+    {
+      description:
+        'Bridge a token to another chain (same token, exact-in) via the best available protocol. IMPORTANT: Always call with dryRun=true first to preview the route and amounts, show it to the user, and only call again with dryRun=false after the user confirms.',
+      inputSchema: {
+        network: z.string().describe('Source network name (e.g. ethereum)'),
+        token: z.string().describe('Token to bridge (e.g. usdt)'),
+        toNetwork: z.string().describe('Destination network name'),
+        amount: z.string().describe('Amount to bridge (decimal, e.g. "100")'),
+        recipient: z.string().optional().describe('Address that receives the tokens (default: your account)'),
+        protocol: z.string().optional().describe('Force a specific protocol; omit to use the best route'),
+        index: z.number().optional().default(0).describe('Account index (default: 0)'),
+        dryRun: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe('Preview without executing (default: true). Set false to execute.'),
+        wallet: z.string().optional().describe('Wallet name (uses default wallet if omitted)')
+      }
+    },
+    async ({ network, token, toNetwork, amount, recipient, protocol, index, dryRun, wallet }) => {
+      try {
+        const input = {
+          kind: /** @type {const} */ ('bridge'),
+          network,
+          index,
+          fromToken: token,
+          toToken: token,
+          toNetwork,
+          amountIn: amount,
+          recipient,
+          protocol,
+          wallet
+        }
+        if (dryRun) {
+          const preview = await previewSwap(input)
+          return jsonResult({
+            preview: true,
+            ...preview,
+            message: 'This is a dry-run preview. Call bridge_token again with dryRun=false to execute.'
+          })
+        }
+        const result = await executeSwap(input)
+        return jsonResult({ success: true, ...result })
+      } catch (e) {
+        return errorResult(e)
+      }
+    }
+  )
+
   const rampInputSchema = {
     network: z.string().describe('Network name (e.g. ethereum, bitcoin)'),
     token: z.string().describe('Crypto asset code (e.g. usdt, eth, btc)'),
@@ -296,13 +540,17 @@ export async function startMcpServer () {
       .string()
       .optional()
       .describe('Crypto amount (e.g. 0.05). Mutually exclusive with fiatAmount.'),
+    provider: z
+      .string()
+      .optional()
+      .describe('Fiat provider short name; required when more than one is enabled (see list_providers)'),
     index: z.number().optional().default(0).describe('Account index (default: 0)'),
     wallet: z.string().optional().describe('Wallet name (uses default wallet if omitted)')
   }
 
   async function handleRamp (
     direction,
-    { network, token, fiatCurrency, fiatAmount, cryptoAmount, index, wallet }
+    { network, token, fiatCurrency, fiatAmount, cryptoAmount, provider, index, wallet }
   ) {
     try {
       const result = await createRampUrl({
@@ -313,6 +561,7 @@ export async function startMcpServer () {
         fiatCurrency,
         fiatAmount,
         cryptoAmount,
+        provider,
         wallet
       })
       const action = direction === 'buy' ? 'Buy' : 'Sell'

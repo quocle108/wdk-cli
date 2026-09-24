@@ -1,0 +1,393 @@
+// Copyright 2026 Tether Operations Limited
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+import { jest } from '@jest/globals'
+
+// In-memory config store with dot-path access, replacing the conf-backed service.
+const store = {}
+
+function resolvePath (obj, key) {
+  const parts = key.split('.')
+  const last = parts.pop()
+  let node = obj
+  for (const part of parts) {
+    if (node === undefined || node === null) return { node: undefined, last }
+    node = node[part]
+  }
+  return { node, last }
+}
+
+jest.unstable_mockModule('../../../src/services/config-service.js', () => ({
+  configService: {
+    get (key) {
+      const { node, last } = resolvePath(store, key)
+      return node?.[last]
+    },
+    set (key, value) {
+      const parts = key.split('.')
+      const last = parts.pop()
+      let node = store
+      for (const part of parts) {
+        if (typeof node[part] !== 'object' || node[part] === null) node[part] = {}
+        node = node[part]
+      }
+      node[last] = value
+    },
+    delete (key) {
+      const { node, last } = resolvePath(store, key)
+      if (node) delete node[last]
+    }
+  }
+}))
+
+const {
+  getTokenByName,
+  getTokenByAddress,
+  getTokensForNetwork,
+  getNativeToken,
+  getTokenSource,
+  isBuiltinToken,
+  resolveTokenIdentifier,
+  saveCustomToken,
+  deleteCustomToken,
+  toBaseUnits,
+  getTokenSlug,
+  tokenSlugValue,
+  getTokensSupportedBy,
+  getAllTokens,
+  setTokenEnabled,
+  getDisabledTokens
+} = await import('../../../src/services/token-service.js')
+
+const USDT_ETH = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
+const USDT_SOL = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
+
+const USDT_ETH_ENTRY = {
+  symbol: 'USDT',
+  decimals: 6,
+  isNative: false,
+  address: USDT_ETH,
+  metadata: {
+    slugs: { indexer: 'usdt', moonpay: 'usdt', bitfinex: 'tUSTUSD', transak: { slug: 'USDT', network: 'ethereum' } }
+  }
+}
+
+const CUSTOM_ENTRY = {
+  symbol: 'MYTOK',
+  decimals: 9,
+  isNative: false,
+  address: '0x1111111111111111111111111111111111111111'
+}
+
+const BUILT_IN_NETWORKS = [
+  'bitcoin', 'bitcoin-testnet3', 'ethereum', 'sepolia', 'polygon', 'arbitrum',
+  'base', 'bsc', 'avalanche', 'solana', 'solana-testnet', 'solana-devnet',
+  'spark', 'spark-regtest', 'tron', 'tron-testnet', 'smart-account-ethereum',
+  'smart-account-sepolia', 'smart-account-polygon', 'smart-account-arbitrum',
+  'smart-account-base', 'smart-account-plasma'
+]
+
+afterEach(() => {
+  delete store.customTokens
+  delete store.overrides
+})
+
+describe('token-service', () => {
+  it('resolves built-in tokens by name, case-insensitively', () => {
+    expect(getTokenByName('ethereum', 'usdt')).toEqual(USDT_ETH_ENTRY)
+    expect(getTokenByName('ethereum', 'USDT')).toEqual(USDT_ETH_ENTRY)
+    expect(getTokenByName('ethereum', 'nope')).toBeUndefined()
+  })
+
+  it('returns entries without registry-internal fields', () => {
+    const entry = getTokenByName('ethereum', 'usdt')
+    expect(Object.keys(entry).sort()).toEqual(['address', 'decimals', 'isNative', 'metadata', 'symbol'])
+  })
+
+  it('resolves the native token with its swap/bridge nativeId', () => {
+    expect(getNativeToken('ethereum')).toEqual({
+      symbol: 'ETH',
+      decimals: 18,
+      isNative: true,
+      nativeId: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+      metadata: {
+        slugs: { moonpay: 'eth', bitfinex: 'tETHUSD', transak: { slug: 'ETH', network: 'ethereum' } }
+      }
+    })
+  })
+
+  it('leaves nativeId unset for a native token that declares none', () => {
+    expect(getNativeToken('bitcoin')).toEqual({
+      symbol: 'BTC',
+      decimals: 8,
+      isNative: true,
+      metadata: {
+        slugs: { indexer: 'btc', moonpay: 'btc', bitfinex: 'tBTCUSD', transak: { slug: 'BTC', network: 'mainnet' } }
+      }
+    })
+  })
+
+  it('matches EVM addresses case-insensitively', () => {
+    expect(getTokenByAddress('ethereum', USDT_ETH.toLowerCase())).toEqual(USDT_ETH_ENTRY)
+  })
+
+  it('matches non-EVM addresses exactly', () => {
+    expect(getTokenByAddress('solana', USDT_SOL)).toEqual({
+      symbol: 'USDT',
+      decimals: 6,
+      isNative: false,
+      address: USDT_SOL,
+      metadata: {
+        slugs: { moonpay: 'usdt_sol', bitfinex: 'tUSTUSD', transak: { slug: 'USDT', network: 'solana' } }
+      }
+    })
+    expect(getTokenByAddress('solana', USDT_SOL.toLowerCase())).toBeUndefined()
+  })
+
+  it('scopes address lookups to the network', () => {
+    expect(getTokenByAddress('polygon', USDT_ETH)).toBeUndefined()
+  })
+
+  it('saveCustomToken persists the entry to config', () => {
+    saveCustomToken('ethereum', 'MyTok', CUSTOM_ENTRY)
+
+    expect(store.customTokens).toEqual({ ethereum: { mytok: CUSTOM_ENTRY } })
+  })
+
+  it('resolves custom tokens by name', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+
+    expect(getTokenByName('ethereum', 'mytok')).toEqual(CUSTOM_ENTRY)
+  })
+
+  it('custom tokens override built-ins', () => {
+    const override = {
+      symbol: 'USDT',
+      decimals: 6,
+      isNative: false,
+      address: '0x2222222222222222222222222222222222222222'
+    }
+    store.customTokens = { ethereum: { usdt: override } }
+
+    expect(getTokenByName('ethereum', 'usdt')).toEqual(override)
+  })
+
+  it('reports the token source', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+
+    expect(getTokenSource('ethereum', 'mytok')).toBe('custom')
+    expect(getTokenSource('ethereum', 'usdt')).toBe('built-in')
+    expect(getTokenSource('ethereum', 'nope')).toBeUndefined()
+  })
+
+  it('identifies built-in tokens', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+
+    expect(isBuiltinToken('ethereum', 'usdt')).toBe(true)
+    expect(isBuiltinToken('ethereum', 'mytok')).toBe(false)
+  })
+
+  it('includes custom tokens in the network listing', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+
+    const tokens = getTokensForNetwork('ethereum')
+
+    expect(Object.keys(tokens)).toEqual(['eth', 'usdt', 'xaut', 'mytok'])
+    expect(tokens.mytok).toEqual(CUSTOM_ENTRY)
+  })
+
+  it('skips invalid custom token entries with a warning instead of throwing', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    store.customTokens = { ethereum: { bad: { symbol: 'BAD' }, mytok: CUSTOM_ENTRY } }
+
+    const tokens = getTokensForNetwork('ethereum')
+
+    expect(Object.keys(tokens)).toEqual(['eth', 'usdt', 'xaut', 'mytok'])
+    expect(tokens.mytok).toEqual(CUSTOM_ENTRY)
+    expect(spy.mock.calls).toEqual([[
+      "Warning: ignoring invalid custom token 'ethereum/bad' (decimals: Invalid input: expected number, received undefined). " +
+      "Fix it or run 'wdk token delete --network ethereum --token bad'."
+    ]])
+    spy.mockRestore()
+  })
+
+  it('deleteCustomToken removes the entry', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+
+    expect(deleteCustomToken('ethereum', 'mytok')).toBe(true)
+    expect(store.customTokens.ethereum).toEqual({})
+    expect(deleteCustomToken('ethereum', 'mytok')).toBe(false)
+  })
+
+  it.each([
+    ['indexer', 'usdt', 'usdt'],
+    ['moonpay', 'eth', 'eth'],
+    ['bitfinex', 'xaut', 'tXAUT:USD']
+  ])('returns the %s slug for a token that has one', (system, token, expected) => {
+    expect(getTokenSlug('ethereum', token, system)).toBe(expected)
+  })
+
+  it('returns undefined when the system does not carry the token', () => {
+    expect(getTokenSlug('ethereum', 'eth', 'indexer')).toBeUndefined()
+  })
+
+  it('returns undefined when the token is not registered', () => {
+    expect(getTokenSlug('ethereum', 'nope', 'moonpay')).toBeUndefined()
+  })
+
+  it('returns the object form whole, so extra fields reach the caller', () => {
+    store.customTokens = {
+      ethereum: {
+        mytok: { ...CUSTOM_ENTRY, metadata: { slugs: { transak: { slug: 'MYTOK', network: 'ethereum' } } } }
+      }
+    }
+
+    expect(getTokenSlug('ethereum', 'mytok', 'transak')).toEqual({ slug: 'MYTOK', network: 'ethereum' })
+    expect(tokenSlugValue(getTokenByName('ethereum', 'mytok'), 'transak')).toBe('MYTOK')
+  })
+
+  it('folds a pre-slugs custom token into the block on read', () => {
+    store.customTokens = {
+      ethereum: { mytok: { ...CUSTOM_ENTRY, metadata: { moonpaySlug: 'mytok_eth' } } }
+    }
+
+    expect(getTokenSlug('ethereum', 'mytok', 'moonpay')).toBe('mytok_eth')
+  })
+
+  it('lists tokens an external system carries', () => {
+    expect(getTokensSupportedBy('ethereum', 'indexer')).toEqual(['usdt', 'xaut'])
+    expect(getTokensSupportedBy('ethereum', 'moonpay')).toEqual(['eth', 'usdt', 'xaut'])
+  })
+
+  it('returns all tokens grouped by network', () => {
+    store.customTokens = { mynet: { tok: CUSTOM_ENTRY } }
+
+    const all = getAllTokens()
+
+    expect(Object.keys(all)).toEqual([...BUILT_IN_NETWORKS, 'mynet'])
+    expect(all.ethereum.usdt).toEqual(USDT_ETH_ENTRY)
+    expect(all.mynet.tok).toEqual(CUSTOM_ENTRY)
+  })
+
+  it('resolves token identifiers for native and contract tokens', () => {
+    expect(resolveTokenIdentifier('ethereum', 'eth')).toEqual({ isNative: true, address: undefined })
+    expect(resolveTokenIdentifier('ethereum', 'usdt')).toEqual({ isNative: false, address: USDT_ETH })
+    expect(() => resolveTokenIdentifier('ethereum', 'nope')).toThrow(/not registered/)
+  })
+
+  it('converts human amounts to base units using registered decimals', () => {
+    expect(toBaseUnits('ethereum', 'usdt', '1.5')).toBe('1500000')
+    expect(toBaseUnits('ethereum', undefined, '2')).toBe('2000000000000000000')
+    expect(() => toBaseUnits('ethereum', 'usdt', '1.1234567')).toThrow(/precision/)
+  })
+})
+
+describe('token overrides', () => {
+  const DISABLED_USDT = { tokens: { 'ethereum/usdt': { enabled: false } } }
+  const ETH_ENTRY = {
+    symbol: 'ETH',
+    decimals: 18,
+    isNative: true,
+    nativeId: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+    metadata: { slugs: { moonpay: 'eth', bitfinex: 'tETHUSD', transak: { slug: 'ETH', network: 'ethereum' } } }
+  }
+
+  it('hides a disabled built-in token from every lookup', () => {
+    store.overrides = DISABLED_USDT
+
+    expect(getTokenByName('ethereum', 'usdt')).toBeUndefined()
+    expect(getTokenByAddress('ethereum', USDT_ETH)).toBeUndefined()
+    expect(getTokensForNetwork('ethereum').usdt).toBeUndefined()
+    expect(getTokensForNetwork('ethereum').eth).toEqual(ETH_ENTRY)
+  })
+
+  it('lists the disabled tokens of a network', () => {
+    store.overrides = DISABLED_USDT
+
+    expect(getDisabledTokens('ethereum')).toEqual(['ethereum/usdt'])
+    expect(getDisabledTokens('polygon')).toEqual([])
+  })
+
+  it('disables a built-in token', () => {
+    expect(setTokenEnabled('ethereum', 'usdt', false)).toBe(false)
+
+    expect(store.overrides).toEqual(DISABLED_USDT)
+  })
+
+  it('restores the token on enable and clears the delta', () => {
+    store.overrides = DISABLED_USDT
+
+    expect(setTokenEnabled('ethereum', 'usdt', true)).toBe(false)
+
+    expect(getTokenByName('ethereum', 'usdt')).toEqual(USDT_ETH_ENTRY)
+    expect(store.overrides).toBeUndefined()
+  })
+
+  it('refuses to disable a native token', () => {
+    expect(() => setTokenEnabled('ethereum', 'eth', false)).toThrow(
+      "'eth' is the native token of 'ethereum'."
+    )
+  })
+
+  it('refuses a token that is not registered', () => {
+    expect(() => setTokenEnabled('ethereum', 'nope', false)).toThrow(
+      "'nope' is not registered on 'ethereum'."
+    )
+  })
+
+  it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__'])(
+    'refuses the inherited object property %s as a token name', (name) => {
+      expect(() => setTokenEnabled('ethereum', name, false)).toThrow(
+        `'${name}' is not registered on 'ethereum'.`
+      )
+      expect(store.overrides).toBeUndefined()
+    }
+  )
+
+  it('disables a custom token', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+
+    expect(setTokenEnabled('ethereum', 'mytok', false)).toBe(false)
+    expect(store.overrides).toEqual({ tokens: { 'ethereum/mytok': { enabled: false } } })
+  })
+
+  it('hides a disabled custom token but still resolves it for inspection', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+    store.overrides = { tokens: { 'ethereum/mytok': { enabled: false } } }
+
+    expect(getTokenByName('ethereum', 'mytok')).toBeUndefined()
+    expect(getTokenByName('ethereum', 'mytok', { includeDisabled: true })).toEqual(CUSTOM_ENTRY)
+  })
+
+  it('clears the override when the custom token is deleted', () => {
+    store.customTokens = { ethereum: { mytok: CUSTOM_ENTRY } }
+    store.overrides = { tokens: { 'ethereum/mytok': { enabled: false } } }
+
+    expect(deleteCustomToken('ethereum', 'mytok')).toBe(true)
+    expect(store.overrides).toBeUndefined()
+  })
+
+  it('rejects a token already in the desired state', () => {
+    expect(() => setTokenEnabled('ethereum', 'usdt', true)).toThrow(
+      "'ethereum/usdt' is already enabled."
+    )
+  })
+
+  it('clears a stale override on enable', () => {
+    store.overrides = { tokens: { 'ethereum/gone': { enabled: false } } }
+
+    expect(setTokenEnabled('ethereum', 'gone', true)).toBe(true)
+    expect(store.overrides).toBeUndefined()
+  })
+})

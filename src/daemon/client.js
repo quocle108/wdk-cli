@@ -12,16 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/** @typedef {import('./protocol.js').DaemonRequest} DaemonRequest */
-/** @typedef {import('./protocol.js').DaemonResponse} DaemonResponse */
-/** @typedef {import('./protocol.js').GetAddressResult} GetAddressResult */
-/** @typedef {import('./protocol.js').GetBalanceResult} GetBalanceResult */
-/** @typedef {import('./protocol.js').EstimateFeeResult} EstimateFeeResult */
-/** @typedef {import('./protocol.js').SendResult} SendResult */
-/** @typedef {import('./protocol.js').WalletStatus} WalletStatus */
-/** @typedef {import('./protocol.js').ListWalletsResult} ListWalletsResult */
-/** @typedef {import('./protocol.js').StatusResult} StatusResult */
-
 import { connect } from 'node:net'
 import { spawn } from 'node:child_process'
 import { readFile, access, unlink } from 'node:fs/promises'
@@ -31,13 +21,35 @@ import {
   getDaemonPidPath,
   DAEMON_START_RETRIES,
   DAEMON_START_RETRY_INTERVAL_MS,
-  DAEMON_SPAWN_TIMEOUT_MS
+  DAEMON_SPAWN_TIMEOUT_MS,
+  IPC_CONTROL_TIMEOUT_MS,
+  IPC_READ_TIMEOUT_MS,
+  IPC_WRITE_TIMEOUT_MS,
+  DEFAULT_FINALITY_TIMEOUT_MS,
+  IPC_WAIT_BUFFER_MS
 } from '../config/constants.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
-/** @typedef {import('../errors/index.js').ErrorCodeType} ErrorCodeType */
 import { configService } from '../services/config-service.js'
 import { KeyService } from '../services/key-service.js'
 import { WalletKeyring } from '../security/keyring.js'
+
+/** @typedef {import('./protocol.js').DaemonRequest} DaemonRequest */
+/** @typedef {import('./protocol.js').DaemonResponse} DaemonResponse */
+/** @typedef {import('./protocol.js').GetAddressResult} GetAddressResult */
+/** @typedef {import('./protocol.js').GetBalanceResult} GetBalanceResult */
+/** @typedef {import('./protocol.js').EstimateFeeResult} EstimateFeeResult */
+/** @typedef {import('./protocol.js').CallMethodResult} CallMethodResult */
+/** @typedef {import('./protocol.js').SendResult} SendResult */
+/** @typedef {import('./protocol.js').SignMessageResult} SignMessageResult */
+/** @typedef {import('./protocol.js').VerifyMessageResult} VerifyMessageResult */
+/** @typedef {import('./protocol.js').GetTransactionResult} GetTransactionResult */
+/** @typedef {import('./protocol.js').QuoteRequest} QuoteRequest */
+/** @typedef {import('./protocol.js').QuoteResult} QuoteResult */
+/** @typedef {import('./protocol.js').ExecuteResult} ExecuteResult */
+/** @typedef {import('./protocol.js').WalletStatus} WalletStatus */
+/** @typedef {import('./protocol.js').ListWalletsResult} ListWalletsResult */
+/** @typedef {import('./protocol.js').StatusResult} StatusResult */
+/** @typedef {import('../errors/index.js').ErrorCodeType} ErrorCodeType */
 
 /**
  * Resolves the absolute path to the wdk-daemon.mjs binary, relative to this file.
@@ -170,7 +182,7 @@ export class DaemonClient {
    * @param {number} [timeoutMs] - Request timeout in milliseconds.
    * @returns {Promise<DaemonResponse>} The daemon response.
    */
-  async request (req, timeoutMs = 5000) {
+  async request (req, timeoutMs = IPC_CONTROL_TIMEOUT_MS) {
     if (!(await this.isRunning())) {
       throw new WdkCliError('Wallet is locked.', ErrorCode.WALLET_LOCKED)
     }
@@ -199,6 +211,14 @@ export class DaemonClient {
 
       socket.on('error', (err) => {
         reject(new Error(`Cannot connect to wallet daemon: ${err.message}`))
+      })
+
+      socket.on('close', () => {
+        reject(new WdkCliError(
+          'Lost connection to the wallet daemon.',
+          ErrorCode.NETWORK_ERROR,
+          'The daemon stopped and wallet sessions were lost. Run: wdk wallet unlock --name <name>'
+        ))
       })
 
       socket.setTimeout(timeoutMs, () => {
@@ -233,7 +253,7 @@ export class DaemonClient {
    * @returns {Promise<string>} The derived address.
    */
   async getAddress (network, index = 0, wallet) {
-    const resp = await this.request({ action: 'get_address', network, index, wallet }, 30000)
+    const resp = await this.request({ action: 'get_address', network, index, wallet }, IPC_READ_TIMEOUT_MS)
     this.#assertOk(resp, 'Failed to get address')
     const data = /** @type {GetAddressResult} */ (resp.data)
     return data.address
@@ -249,7 +269,7 @@ export class DaemonClient {
    * @returns {Promise<GetBalanceResult>} The balance info.
    */
   async getBalance (network, index = 0, token, wallet) {
-    const resp = await this.request({ action: 'get_balance', network, index, token, wallet }, 30000)
+    const resp = await this.request({ action: 'get_balance', network, index, token, wallet }, IPC_READ_TIMEOUT_MS)
     this.#assertOk(resp, 'Failed to get balance')
     const data = /** @type {GetBalanceResult} */ (resp.data)
     return data
@@ -269,7 +289,7 @@ export class DaemonClient {
   async estimateFee (network, index, to, amount, token, wallet) {
     const resp = await this.request(
       { action: 'estimate_fee', network, index, to, amount, token, wallet },
-      30000
+      IPC_READ_TIMEOUT_MS
     )
     this.#assertOk(resp, 'Failed to estimate fee')
     const data = /** @type {EstimateFeeResult} */ (resp.data)
@@ -290,11 +310,141 @@ export class DaemonClient {
   async send (network, index, to, amount, token, wallet) {
     const resp = await this.request(
       { action: 'send', network, index, to, amount, token, wallet },
-      60000
+      IPC_WRITE_TIMEOUT_MS
     )
     this.#assertOk(resp, 'Failed to send transaction')
     const data = /** @type {SendResult} */ (resp.data)
     return data
+  }
+
+  /**
+   * Invokes a catalog-declared module method via the daemon.
+   *
+   * @param {string} network - The network name.
+   * @param {string} method - The method name.
+   * @param {Record<string, string>} args - Raw method argument strings keyed by parameter name.
+   * @param {number} [index] - The BIP-44 account index.
+   * @param {string} [wallet] - The wallet name.
+   * @returns {Promise<CallMethodResult>} The method result (BigInt values serialized as strings, undefined as null) and the account it acted as.
+   */
+  async callMethod (network, method, args, index = 0, wallet) {
+    const resp = await this.request(
+      { action: 'call_method', network, method, args, index, wallet },
+      IPC_WRITE_TIMEOUT_MS
+    )
+    this.#assertOk(resp, `Failed to call ${method}`)
+    return /** @type {CallMethodResult} */ (resp.data)
+  }
+
+  /**
+   * Signs an arbitrary message with the account's private key via the daemon.
+   *
+   * @param {string} network - The network name.
+   * @param {string} message - The message to sign.
+   * @param {number} [index] - The BIP-44 account index (default: 0).
+   * @param {string} [wallet] - The wallet name.
+   * @returns {Promise<SignMessageResult>} The signing address and signature.
+   */
+  async signMessage (network, message, index = 0, wallet) {
+    const resp = await this.request(
+      { action: 'sign_message', network, message, index, wallet },
+      IPC_READ_TIMEOUT_MS
+    )
+    this.#assertOk(resp, 'Failed to sign message')
+    return /** @type {SignMessageResult} */ (resp.data)
+  }
+
+  /**
+   * Verifies a message signature against the account's key via the daemon.
+   *
+   * @param {string} network - The network name.
+   * @param {string} message - The signed message.
+   * @param {string} signature - The signature to check.
+   * @param {number} [index] - The BIP-44 account index (default: 0).
+   * @param {string} [wallet] - The wallet name.
+   * @returns {Promise<VerifyMessageResult>} Whether the signature is valid, and the account it was checked against.
+   */
+  async verifyMessage (network, message, signature, index = 0, wallet) {
+    const resp = await this.request(
+      { action: 'verify_message', network, message, signature, index, wallet },
+      IPC_READ_TIMEOUT_MS
+    )
+    this.#assertOk(resp, 'Failed to verify message')
+    return /** @type {VerifyMessageResult} */ (resp.data)
+  }
+
+  /**
+   * @typedef {Object} GetTransactionOptions
+   * @property {'confirmed' | 'final'} [finality] - Block until this finality target is reached; omit to fetch the current state.
+   * @property {number} [timeout] - Wait time budget in milliseconds (default: 150,000).
+   * @property {number} [index] - The BIP-44 account index (default: 0).
+   */
+
+  /**
+   * Fetches a transaction's normalized receipt via the daemon, optionally
+   * blocking until it reaches a finality target.
+   *
+   * @param {string} network - The network name.
+   * @param {string} hash - The transaction hash.
+   * @param {GetTransactionOptions} [options] - Finality wait options.
+   * @param {string} [wallet] - The wallet name.
+   * @returns {Promise<unknown>} The normalized receipt (BigInt values serialized as strings).
+   */
+  async getTransaction (network, hash, options = {}, wallet) {
+    const { finality, index = 0 } = options
+    // Always send an explicit wait budget, so the socket outlives the daemon by construction.
+    const timeout = finality ? options.timeout ?? DEFAULT_FINALITY_TIMEOUT_MS : undefined
+    const ipcTimeout = finality ? timeout + IPC_WAIT_BUFFER_MS : IPC_READ_TIMEOUT_MS
+    const resp = await this.request(
+      { action: 'get_transaction', network, hash, finality, timeout, index, wallet },
+      ipcTimeout
+    )
+    this.#assertOk(resp, 'Failed to get transaction')
+    const data = /** @type {GetTransactionResult} */ (resp.data)
+    return data.transaction
+  }
+
+  /**
+   * Requests a best-route swap or bridge quote via the daemon.
+   *
+   * @param {'swap' | 'bridge'} kind - Whether to quote a swap or a bridge.
+   * @param {string} network - The source network name.
+   * @param {number} index - The BIP-44 account index.
+   * @param {QuoteRequest} request - The quote request (amounts as base-unit strings).
+   * @param {string} [protocol] - Force a specific protocol; omit for best-route.
+   * @param {string} [wallet] - The wallet name.
+   * @returns {Promise<QuoteResult>} The winning quote.
+   */
+  async quote (kind, network, index, request, protocol, wallet) {
+    const action = kind === 'bridge' ? 'quote_bridge' : 'quote_swap'
+    const resp = await this.request(
+      { action, network, index, request, protocol, wallet },
+      60000
+    )
+    this.#assertOk(resp, `Failed to quote ${kind}`)
+    return /** @type {QuoteResult} */ (resp.data)
+  }
+
+  /**
+   * Executes a best-route swap or bridge via the daemon: quotes every capable
+   * protocol, then executes the winning one as a single transaction.
+   *
+   * @param {'swap' | 'bridge'} kind - Whether to execute a swap or a bridge.
+   * @param {string} network - The source network name.
+   * @param {number} index - The BIP-44 account index.
+   * @param {QuoteRequest} request - The quote request (amounts as base-unit strings).
+   * @param {string} [protocol] - Force a specific protocol; omit for best-route.
+   * @param {string} [wallet] - The wallet name.
+   * @returns {Promise<ExecuteResult>} The execution result.
+   */
+  async execute (kind, network, index, request, protocol, wallet) {
+    const action = kind === 'bridge' ? 'execute_bridge' : 'execute_swap'
+    const resp = await this.request(
+      { action, network, index, request, protocol, wallet },
+      120000
+    )
+    this.#assertOk(resp, `Failed to ${kind}`)
+    return /** @type {ExecuteResult} */ (resp.data)
   }
 
   /**
@@ -308,7 +458,7 @@ export class DaemonClient {
   async unlockWallet (name, passphrase, ttlMinutes = 5) {
     const resp = await this.request(
       { action: 'unlock_wallet', wallet: name, passphrase, ttl: ttlMinutes },
-      30000
+      IPC_READ_TIMEOUT_MS
     )
     this.#assertOk(resp, `Failed to unlock wallet '${name}'`)
   }
