@@ -17,7 +17,7 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { walletsFile } from '../config/wdk-config.js'
 import { getAllTokens, getTokenByName, tokenSlugValue, getTokensSupportedBy } from './token-service.js'
 import { getOwn } from './override-service.js'
-import { resolveProtocolConfig, getProtocols, getAllProtocols } from './protocol-service.js'
+import { resolveProtocolConfig, resolveSoleProvider } from './protocol-service.js'
 
 /**
  * The system key the indexer's token codes are registered under in
@@ -37,29 +37,7 @@ const INDEXER_KIND = 'indexer'
  * @throws {WdkCliError} INVALID_ARGUMENT when several are enabled at once.
  */
 function indexerProvider () {
-  const usable = Object.entries(getProtocols())
-    .filter(([, entry]) => entry.kind === INDEXER_KIND)
-    .map(([name]) => name)
-  if (usable.length === 0) {
-    const known = Object.entries(getAllProtocols())
-      .filter(([, entry]) => entry.kind === INDEXER_KIND)
-      .map(([name]) => name)
-    throw new WdkCliError(
-      'No indexer is available.',
-      ErrorCode.MISSING_CONFIG,
-      known.length > 0
-        ? `Enable one with: wdk provider enable --name ${known[0]}`
-        : 'See the registered providers with: wdk provider list'
-    )
-  }
-  if (usable.length > 1) {
-    throw new WdkCliError(
-      `Several indexers are enabled: ${usable.join(', ')}.`,
-      ErrorCode.INVALID_ARGUMENT,
-      `Leave one enabled with: wdk provider disable --name ${usable[1]}`
-    )
-  }
-  return usable[0]
+  return resolveSoleProvider(INDEXER_KIND, 'indexer')
 }
 
 /**

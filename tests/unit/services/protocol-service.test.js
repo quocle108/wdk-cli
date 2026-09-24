@@ -66,18 +66,20 @@ function withConfig (values) {
 describe('the packaged provider registry', () => {
   // The CLI resolves these kinds by kind, not by name, and refuses to guess
   // between two. Shipping a second one is a release bug, not a user error.
-  it.each(['indexer', 'pricing'])('registers exactly one %s provider', (kind) => {
+  it.each([
+    ['indexer', ['wdk-indexer']],
+    ['pricing', ['bitfinex']]
+  ])('registers exactly one %s provider', (kind, expected) => {
     const names = Object.entries(catalog.providers)
       .filter(([, entry]) => entry.kind === kind)
       .map(([name]) => name)
 
-    expect(names).toHaveLength(1)
+    expect(names).toEqual(expected)
   })
 
   it('declares a known kind on every entry', () => {
-    for (const [name, entry] of Object.entries(catalog.providers)) {
+    for (const entry of Object.values(catalog.providers)) {
       expect(PROTOCOL_KINDS).toContain(entry.kind)
-      expect(typeof name).toBe('string')
     }
   })
 })

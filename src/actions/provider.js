@@ -15,7 +15,7 @@
 import {
   PROTOCOL_KINDS,
   ADDABLE_KINDS,
-  assertSinglePricingFeed,
+  assertSingleInstanceKind,
   getProtocols,
   getAllProtocols,
   getProtocolsIncludingDisabled,
@@ -161,7 +161,7 @@ export function validateProviderSpec (data) {
       `${label} providers ship with the CLI. See the available ones with: wdk provider list`
     )
   }
-  assertSinglePricingFeed(kind, name)
+  assertSingleInstanceKind(kind, name)
 
   const module = obj.module
   if (typeof module !== 'string' || !module) {

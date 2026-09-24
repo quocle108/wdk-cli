@@ -95,9 +95,9 @@ function enrichTransfer (network, t) {
  * @returns {Promise<HistoryResult>} The history result.
  */
 export async function getHistory (input) {
+  assertIndexerAvailable()
   const wallet = await daemonClient.requireUnlocked(input.wallet)
   validateNetwork(input.network)
-  assertIndexerAvailable()
   if (!isIndexerSupported(input.network)) {
     throw new WdkCliError(
       `Network '${input.network}' is not supported by the indexer API.`,

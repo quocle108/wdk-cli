@@ -69,7 +69,7 @@ describe('indexer endpoint configuration', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('rejects before any wallet work when no indexer is enabled', () => {
+  it('rejects when no indexer is enabled', () => {
     jest.spyOn(configService, 'get').mockImplementation((key) =>
       key === 'overrides' ? { providers: { 'wdk-indexer': { enabled: false } } } : undefined
     )
@@ -94,7 +94,7 @@ describe('indexer endpoint configuration', () => {
       expect.objectContaining({
         message: 'Several indexers are enabled: wdk-indexer, myindexer.',
         code: 'INVALID_ARGUMENT',
-        suggestion: 'Leave one enabled with: wdk provider disable --name myindexer'
+        suggestion: 'Only one runs at a time. Disable the others with: wdk provider disable --name <name>'
       })
     )
   })
