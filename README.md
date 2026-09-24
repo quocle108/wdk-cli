@@ -497,14 +497,14 @@ wdk provider enable --name rhinofi
 
 A **provider** is a named, configured use of a protocol module: `velora` is the swap protocol backed by `@tetherto/wdk-protocol-swap-velora-evm`. The packaged ones live in the `providers` registry of `wdk.config.json`; your own are stored in user config and merged after them.
 
-Each entry declares a `kind` — `swap`, `bridge`, `swidge`, or `fiat` — and that declaration is what decides which requests reach it. `wdk swap` quotes the `swap` and `swidge` providers, `wdk bridge` the `bridge` and `swidge` ones, and `wdk buy` / `wdk sell` use the `fiat` ones, all without importing a module first.
+Each entry declares a `kind` — `swap`, `bridge`, `swidge` (which serves both), `fiat`, or `pricing` — and that declaration is what decides which requests reach it. `wdk swap` quotes the `swap` and `swidge` providers, `wdk bridge` the `bridge` and `swidge` ones, `wdk buy` / `wdk sell` use the `fiat` ones, and the `pricing` entry supplies every USD figure, all without importing a module first.
 
 To register your own, install the package with `wdk module add`, then name it in a spec:
 
 | Field | Required | Meaning |
 |---|---|---|
 | `name` | Yes | Short name used by `--protocol`. Lowercase alphanumeric with hyphens, and not one already registered. |
-| `kind` | Yes | `swap`, `bridge`, `swidge`, or `fiat`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. |
+| `kind` | Yes | `swap`, `bridge`, `swidge`, or `fiat`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. `pricing` is registry-only — the packaged feed ships with the CLI and `provider add` refuses it. |
 | `module` | Yes | The package backing it. Must already be registered, built-in or added with `wdk module add`. |
 | `config` | No | Settings applied on every network, such as an API key. |
 | `networks` | No | Per-network settings keyed by network name, shallow-merged over `config`. |
