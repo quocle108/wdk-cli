@@ -102,11 +102,7 @@ export async function getTokenUsdPrice (network, tokenAddress) {
 
 /**
  * Converts several networks' native balances to USD in one call to the feed.
- *
- * The feed batches every pair it has not cached into a single request, so this
- * costs one round trip for the whole set rather than one per network. Networks
- * with no native token, or that the feed does not price, are left out of the
- * result rather than reported as zero.
+ * Networks it does not price are left out rather than reported as zero.
  *
  * @param {NativeAmount[]} items - The per-network native amounts to value.
  * @returns {Promise<Map<string, number>>} USD value keyed by network, to 2 decimals.
@@ -123,13 +119,23 @@ export async function convertManyNativeToUsd (items) {
   if (priced.length === 0) return new Map()
 
   const { name, provider } = await resolvePricingProvider()
-  const data = await provider.getMultiLastPriceData(
-    priced.map(({ token }) => ({ from: feedSymbol(token, name), to: QUOTE }))
-  )
+  const pairs = priced.map(({ token }) => ({ from: feedSymbol(token, name), to: QUOTE }))
+
+  /** @type {(number | undefined)[]} */
+  let prices
+  try {
+    const data = await provider.getMultiLastPriceData(pairs)
+    prices = data.map((entry) => entry?.lastPrice)
+  } catch {
+    // Some feeds reject the whole batch over one symbol they do not carry.
+    prices = await Promise.all(
+      pairs.map(({ from, to }) => provider.getLastPrice(from, to).catch(() => undefined))
+    )
+  }
 
   const usdByNetwork = new Map()
   priced.forEach(({ network, amount, token }, i) => {
-    const price = data[i]?.lastPrice
+    const price = prices[i]
     if (typeof price !== 'number' || !Number.isFinite(price)) return
     const value = new BigNumber(amount.toString()).shiftedBy(-token.decimals)
     usdByNetwork.set(network, Math.round(value.multipliedBy(price).toNumber() * 100) / 100)

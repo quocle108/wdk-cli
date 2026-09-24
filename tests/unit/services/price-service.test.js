@@ -160,6 +160,24 @@ describe('convertManyNativeToUsd', () => {
     expect(usd.has('ethereum')).toBe(false)
   })
 
+  it('keeps the prices it can get when the feed rejects the whole batch', async () => {
+    getMultiLastPriceData.mockRejectedValue(new Error('Unknown symbol: TRX'))
+    getLastPrice.mockImplementation(async (from) => {
+      if (from === 'TRX') throw new Error('Unknown symbol: TRX')
+      return from === 'BTC' ? 100000 : 2000
+    })
+
+    const usd = await convertManyNativeToUsd([
+      { network: 'bitcoin', amount: 100_000_000n },
+      { network: 'tron', amount: 1_000_000n },
+      { network: 'ethereum', amount: 1_000_000_000_000_000_000n }
+    ])
+
+    expect(usd.get('bitcoin')).toBe(100000)
+    expect(usd.get('ethereum')).toBe(2000)
+    expect(usd.has('tron')).toBe(false)
+  })
+
   it('does not call the feed for an empty set', async () => {
     const usd = await convertManyNativeToUsd([])
 

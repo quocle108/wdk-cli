@@ -107,7 +107,7 @@ export async function resolvePricingProvider () {
  * @returns {new (config: Record<string, unknown>) => PricingClient} The client class.
  * @throws {WdkCliError} UNSUPPORTED_MODULE when no pricing client can be identified.
  */
-function clientClass (mod, name) {
+export function clientClass (mod, name) {
   /** @param {unknown} v */
   const cast = (v) => /** @type {new (config: Record<string, unknown>) => PricingClient} */ (v)
   /** @param {unknown} v */

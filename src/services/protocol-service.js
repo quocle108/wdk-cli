@@ -30,14 +30,13 @@ import { WdkCliError, ErrorCode } from '../errors/index.js'
  */
 
 /** Every protocol kind the registry accepts, in the order listings show them. */
+/** The registry kind a USD price feed declares. */
+const PRICING_KIND = /** @type {ProtocolKind} */ ('pricing')
+
 export const PROTOCOL_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat', 'pricing'])
 
-/**
- * The kinds `wdk provider add` can register. Pricing providers ship with the
- * CLI — they need CLI-side code the registry cannot supply — so they are never
- * suggested to a user who is registering a module.
- */
-export const ADDABLE_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat'])
+/** The kinds `wdk provider add` can register. */
+export const ADDABLE_KINDS = /** @type {readonly ProtocolKind[]} */ (['swap', 'bridge', 'swidge', 'fiat', 'pricing'])
 
 /**
  * The methods a protocol class must expose to serve each kind.
@@ -401,8 +400,42 @@ export function isProviderDisabled (name) {
  * @throws {WdkCliError} INVALID_ARGUMENT when the protocol's module is disabled.
  * @throws {WdkCliError} INVALID_ARGUMENT when the protocol is already in the desired state.
  */
+/**
+ * Returns the enabled providers of a kind, other than the one named.
+ *
+ * @param {ProtocolKind} kind - The kind to look for.
+ * @param {string} name - The provider being added or enabled, which is excluded.
+ * @returns {string[]} The other enabled providers of that kind.
+ */
+function otherEnabledOfKind (kind, name) {
+  return Object.entries(getProtocols())
+    .filter(([other, entry]) => other !== name && entry.kind === kind)
+    .map(([other]) => other)
+}
+
+/**
+ * Refuses a second price feed. Only one `pricing` provider may be enabled at a
+ * time, so the CLI never has to guess which one a USD figure came from.
+ *
+ * @param {ProtocolKind} kind - The kind being added or enabled.
+ * @param {string} name - The provider being added or enabled.
+ * @returns {void}
+ * @throws {WdkCliError} INVALID_ARGUMENT when another price feed is already enabled.
+ */
+export function assertSinglePricingFeed (kind, name) {
+  if (kind !== PRICING_KIND) return
+  const [active] = otherEnabledOfKind(PRICING_KIND, name)
+  if (!active) return
+  throw new WdkCliError(
+    `A price feed is already enabled: ${active}.`,
+    ErrorCode.INVALID_ARGUMENT,
+    `Only one runs at a time. Disable it first with: wdk provider disable --name ${active}`
+  )
+}
+
 export function setProviderEnabled (name, enabled) {
   const entry = findProtocol(name)
+  if (enabled && entry) assertSinglePricingFeed(entry.kind, name)
   if (entry && isDisabled('modules', entry.module)) {
     throw new WdkCliError(
       `Provider '${name}' is disabled by its module.`,

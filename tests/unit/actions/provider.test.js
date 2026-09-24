@@ -86,6 +86,28 @@ describe('validateProviderSpec', () => {
     expect(validateProviderSpec({ ...LIFI_SPEC, note: 'ignored' })).toEqual(LIFI_SPEC)
   })
 
+  it('accepts a pricing provider when no other price feed is enabled', () => {
+    withConfig({ overrides: { providers: { bitfinex: { enabled: false } } } })
+
+    expect(validateProviderSpec({ name: 'coingecko', kind: 'pricing', module: CUSTOM_MODULE }))
+      .toEqual({ name: 'coingecko', kind: 'pricing', module: CUSTOM_MODULE })
+  })
+
+  it('refuses a second price feed while the packaged one is enabled', () => {
+    expect(() => validateProviderSpec({ name: 'coingecko', kind: 'pricing', module: CUSTOM_MODULE })).toThrow(
+      expect.objectContaining({
+        message: 'A price feed is already enabled: bitfinex.',
+        code: 'INVALID_ARGUMENT',
+        suggestion: 'Only one runs at a time. Disable it first with: wdk provider disable --name bitfinex'
+      })
+    )
+  })
+
+  it('lets a fiat provider in even though two fiat providers are enabled', () => {
+    expect(validateProviderSpec({ name: 'banxa2', kind: 'fiat', module: CUSTOM_MODULE }))
+      .toEqual({ name: 'banxa2', kind: 'fiat', module: CUSTOM_MODULE })
+  })
+
   it('accepts a fiat provider, which needs no CLI-side adapter', () => {
     const spec = validateProviderSpec({
       name: 'banxa',

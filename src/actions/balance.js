@@ -129,8 +129,6 @@ export async function getAllBalances (input) {
 
   const fetched = (await Promise.all(tasks)).filter((r) => r !== null)
 
-  // One call for every network at once: the feed batches the pairs it has not
-  // cached into a single request, instead of one per network.
   let usdByNetwork = new Map()
   try {
     usdByNetwork = await convertManyNativeToUsd(

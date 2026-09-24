@@ -315,11 +315,29 @@ USD figures come from `bitfinex`, an entry of the `providers` registry with
 `kind: pricing` (see [Provider](#provider)); `wdk provider disable --name
 bitfinex` drops the USD column and changes nothing else.
 
+To use a different feed, register one with `kind: pricing`. Exactly one may be
+enabled at a time, so disable the current one first:
+
+```bash
+wdk module add --name @tetherto/wdk-pricing-coingecko-http
+wdk provider disable --name bitfinex
+wdk provider add '{"name":"coingecko","kind":"pricing","module":"@tetherto/wdk-pricing-coingecko-http"}'
+```
+
+Adding or enabling a second feed is refused, naming the one already on. Whatever
+you put in `config` reaches the module untouched, which is where a feed that
+keeps its own asset ids wants them — CoinGecko needs
+`{"coinIds":{"SOL":"solana","TRX":"tron"}}` for anything outside its small
+built-in map.
+
 The CLI asks it for the token's own `symbol`, so **most tokens need no
 `bitfinex` slug**. Add one only when the symbol is not what the feed calls the
 asset — a different code (Bitfinex lists Tether as `UST`, not `USDT`) or a
 testnet-prefixed symbol (`tBTC` → `BTC`). The value is a currency code, not a
 trading pair: `tUSTUSD` will not resolve.
+
+Slugs are keyed by provider name, so a feed you add yourself starts with none
+and falls back to `symbol` for every token.
 
 Custom entries (added via `token add`) live under `customTokens.<network>.<ticker>` and survive `wdk config reset --all`. Built-in entries can be **overridden** by adding a custom entry with the same ticker — a yellow warning is shown when this happens. `token delete` only removes custom entries; the built-in falls through after deletion.
 
@@ -504,7 +522,7 @@ To register your own, install the package with `wdk module add`, then name it in
 | Field | Required | Meaning |
 |---|---|---|
 | `name` | Yes | Short name used by `--protocol`. Lowercase alphanumeric with hyphens, and not one already registered. |
-| `kind` | Yes | `swap`, `bridge`, `swidge`, or `fiat`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. `pricing` is registry-only — the packaged feed ships with the CLI and `provider add` refuses it. |
+| `kind` | Yes | `swap`, `bridge`, `swidge`, `fiat`, or `pricing`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. Only one `pricing` provider may be enabled at a time — adding or enabling a second is refused and names the active one. |
 | `module` | Yes | The package backing it. Must already be registered, built-in or added with `wdk module add`. |
 | `config` | No | Settings applied on every network, such as an API key. |
 | `networks` | No | Per-network settings keyed by network name, shallow-merged over `config`. |

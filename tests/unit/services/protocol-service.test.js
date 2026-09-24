@@ -253,7 +253,7 @@ describe('assertImplementsKind', () => {
   it('reports a class that implements no protocol interface', () => {
     expect(() => assertImplementsKind('lifi', 'swap', classWith())).toThrow(
       expect.objectContaining({
-        suggestion: 'Its module implements none of: swap, bridge, swidge, fiat.'
+        suggestion: 'Its module implements none of: swap, bridge, swidge, fiat, pricing.'
       })
     )
   })
@@ -355,6 +355,35 @@ describe('provider enable and disable', () => {
 
     expect(store.overrides).toBeUndefined()
     expect(getProtocols().velora).toEqual(catalog.providers.velora)
+  })
+
+  it('refuses to enable a second price feed', () => {
+    store.customProviders = { coingecko: { kind: 'pricing', module: '@tetherto/wdk-pricing-coingecko-http' } }
+    store.overrides = { providers: { bitfinex: { enabled: false } } }
+
+    expect(() => setProviderEnabled('bitfinex', true)).toThrow(
+      expect.objectContaining({
+        message: 'A price feed is already enabled: coingecko.',
+        code: 'INVALID_ARGUMENT',
+        suggestion: 'Only one runs at a time. Disable it first with: wdk provider disable --name coingecko'
+      })
+    )
+  })
+
+  it('enables a price feed when it is the only one', () => {
+    store.overrides = { providers: { bitfinex: { enabled: false } } }
+
+    expect(setProviderEnabled('bitfinex', true)).toBe(false)
+
+    expect(getProtocols().bitfinex).toEqual(catalog.providers.bitfinex)
+  })
+
+  it('never blocks disabling a price feed', () => {
+    store.customProviders = { coingecko: { kind: 'pricing', module: '@tetherto/wdk-pricing-coingecko-http' } }
+
+    expect(setProviderEnabled('bitfinex', false)).toBe(false)
+
+    expect(getProtocols().bitfinex).toBeUndefined()
   })
 
   it('points a disabled provider at its own enable command', () => {
