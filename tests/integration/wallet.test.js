@@ -14,8 +14,6 @@
 
 import { Cli } from './helpers.js'
 
-// The seed the WDK wallet modules use in their own integration tests, so the
-// addresses below match what `wdk-wallet-evm` asserts for the same derivation.
 const SEED = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 const ETHEREUM_0 = '0x405005C7c4422390F4B334F64Cf20E0b767131d0'
 /** Mainnet networks in the packaged registry. */
@@ -77,6 +75,7 @@ describe('wallet lifecycle', () => {
     const again = await cli.run(['wallet', 'create', '--name', 'w1'], { unlocked: true })
 
     expect(again.code).toBe(1)
+    expect(again.output).toContain("Wallet 'w1' already exists.")
   })
 
   it('refuses a word count that is not 12 or 24', async () => {
@@ -85,6 +84,7 @@ describe('wallet lifecycle', () => {
     )
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain('--words must be 12 or 24')
   })
 
   it('cannot prompt for a passphrase when stdin is piped', async () => {
@@ -137,6 +137,7 @@ describe('import, unlock and lock', () => {
     })
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain('Invalid seed phrase. Must be 12 or 24 valid BIP-39 words.')
   })
 
   it('refuses the wrong passphrase on unlock', async () => {
@@ -145,9 +146,10 @@ describe('import, unlock and lock', () => {
       stdin: SEED + '\n'
     })
 
-    const result = await cli.run(['wallet', 'unlock', '--name', 'main'])
+    const result = await cli.run(['wallet', 'unlock', '--name', 'main'], { passphrase: 'wrong-one' })
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain('Incorrect passphrase.')
   })
 
   it('requires a target for lock', async () => {
@@ -212,6 +214,7 @@ describe('address derivation, which needs no chain', () => {
     const result = await cli.run(['get', 'address', '--network', 'atlantis'], { unlocked: true })
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain("Network 'atlantis' is not supported.")
   })
 
   it('refuses to derive while locked', async () => {
@@ -223,14 +226,162 @@ describe('address derivation, which needs no chain', () => {
     const result = await cli.run(['get', 'address', '--network', 'ethereum'])
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain("Wallet 'main' is not unlocked.")
   })
 
-  it('refuses a network whose module the user disabled', async () => {
+  it('refuses a network the user disabled', async () => {
     await importAndUnlock()
     await cli.run(['network', 'disable', '--name', 'ethereum'], { unlocked: true })
+    // Disabling a network locks every wallet, so re-unlock: otherwise this
+    // passes on "not unlocked" and proves nothing about the network.
+    await cli.run(['wallet', 'unlock', '--name', 'main'], { unlocked: true })
 
     const result = await cli.run(['get', 'address', '--network', 'ethereum'], { unlocked: true })
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain("Network 'ethereum' is disabled.")
+  })
+})
+
+describe('export, which decrypts the seed', () => {
+  it('returns exactly the seed that was imported', async () => {
+    await importAndUnlock()
+
+    const exported = await cli.json(['wallet', 'export', '--name', 'main'], { unlocked: true })
+
+    expect(exported.seedPhrase).toBe(SEED)
+  })
+
+  it('refuses to export without the passphrase', async () => {
+    await importAndUnlock()
+
+    const result = await cli.run(['wallet', 'export', '--name', 'main'])
+
+    expect(result.code).toBe(1)
+    expect(result.output).not.toContain('cook voyage')
+  })
+
+  it('refuses to export a wallet that does not exist', async () => {
+    const result = await cli.run(['wallet', 'export', '--name', 'ghost'], { unlocked: true })
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain("Wallet 'ghost' not found.")
+  })
+})
+
+describe('the default wallet', () => {
+  it('moves the default to another wallet', async () => {
+    await cli.json(['wallet', 'create', '--name', 'w1'], { unlocked: true })
+    await cli.json(['wallet', 'create', '--name', 'w2'], { unlocked: true })
+
+    await cli.run(['wallet', 'default', '--name', 'w2'], { unlocked: true })
+    const { wallets } = await cli.json(['wallet', 'list'])
+
+    expect(wallets.find((w) => w.default).name).toBe('w2')
+  })
+
+  it('refuses to default to a wallet that does not exist', async () => {
+    const result = await cli.run(['wallet', 'default', '--name', 'ghost'], { unlocked: true })
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain("Wallet 'ghost' not found.")
+  })
+
+  it('leaves the second wallet non-default when created', async () => {
+    await cli.json(['wallet', 'create', '--name', 'w1'], { unlocked: true })
+    await cli.json(['wallet', 'create', '--name', 'w2'], { unlocked: true })
+
+    const { wallets } = await cli.json(['wallet', 'list'])
+
+    expect(wallets.filter((w) => w.default).map((w) => w.name)).toEqual(['w1'])
+  })
+})
+
+describe('change-passphrase, which re-encrypts the seed', () => {
+  it('keeps the seed recoverable under the new passphrase', async () => {
+    await cli.run(['wallet', 'import', '--name', 'main', '--seed-stdin'], {
+      unlocked: true,
+      stdin: SEED + '\n'
+    })
+
+    const changed = await cli.run(
+      ['wallet', 'change-passphrase', '--name', 'main', '--new-passphrase-stdin'],
+      { unlocked: true, stdin: 'second-passphrase\n' }
+    )
+    expect(changed.code).toBe(0)
+
+    const exported = await cli.run(['wallet', 'export', '--name', 'main', '--json'], {
+      passphrase: 'second-passphrase'
+    })
+
+    expect(JSON.parse(exported.stdout.trim().split('\n').pop()).seedPhrase).toBe(SEED)
+  })
+
+  it('stops the old passphrase from working', async () => {
+    await cli.run(['wallet', 'import', '--name', 'main', '--seed-stdin'], {
+      unlocked: true,
+      stdin: SEED + '\n'
+    })
+    await cli.run(
+      ['wallet', 'change-passphrase', '--name', 'main', '--new-passphrase-stdin'],
+      { unlocked: true, stdin: 'second-passphrase\n' }
+    )
+
+    const result = await cli.run(['wallet', 'export', '--name', 'main'], { unlocked: true })
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain('Incorrect passphrase.')
+  })
+})
+
+describe('more than one wallet', () => {
+  it('locks every wallet at once', async () => {
+    await importAndUnlock('w1')
+    await cli.run(['wallet', 'import', '--name', 'w2', '--seed-stdin'], {
+      unlocked: true,
+      stdin: SEED + '\n'
+    })
+    await cli.run(['wallet', 'unlock', '--name', 'w2'], { unlocked: true })
+
+    await cli.run(['wallet', 'lock', '--all'], { unlocked: true })
+    const { wallets } = await cli.json(['wallet', 'list'])
+
+    expect(wallets.every((w) => !w.unlocked)).toBe(true)
+  })
+
+  it('derives from the wallet named by --wallet, not the default', async () => {
+    await importAndUnlock('w1')
+    await cli.json(['wallet', 'create', '--name', 'w2'], { unlocked: true })
+    await cli.run(['wallet', 'unlock', '--name', 'w2'], { unlocked: true })
+
+    const fromNamed = await cli.json(
+      ['get', 'address', '--network', 'ethereum', '--wallet', 'w1'], { unlocked: true }
+    )
+
+    expect(fromNamed.address).toBe(ETHEREUM_0)
+  })
+
+  it('refuses a rename onto a name already taken', async () => {
+    await cli.json(['wallet', 'create', '--name', 'w1'], { unlocked: true })
+    await cli.json(['wallet', 'create', '--name', 'w2'], { unlocked: true })
+
+    const result = await cli.run(
+      ['wallet', 'rename', '--name', 'w1', '--new-name', 'w2'], { unlocked: true }
+    )
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain("Wallet 'w2' already exists.")
+  })
+
+  it('refuses to import onto a name already taken', async () => {
+    await cli.json(['wallet', 'create', '--name', 'w1'], { unlocked: true })
+
+    const result = await cli.run(['wallet', 'import', '--name', 'w1', '--seed-stdin'], {
+      unlocked: true,
+      stdin: SEED + '\n'
+    })
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain("Wallet 'w1' already exists.")
   })
 })

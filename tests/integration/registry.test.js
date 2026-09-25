@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { createRequire } from 'node:module'
+import { statSync } from 'node:fs'
 import { Cli } from './helpers.js'
 
 const catalog = createRequire(import.meta.url)('../../wdk.config.json')
@@ -114,12 +115,14 @@ describe('provider add', () => {
     const result = await cli.run(['provider', 'add', '"just a string"'])
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain('Cannot read <data>')
   })
 
   it('refuses malformed JSON', async () => {
     const result = await cli.run(['provider', 'add', '{not json'])
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain('Invalid JSON in <data>')
   })
 
   it('persists endpointKeys so the module is handed a callback', async () => {
@@ -156,6 +159,7 @@ describe('provider enable, disable and delete', () => {
     const result = await cli.run(['provider', 'delete', '--name', 'ghost'])
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain("Provider 'ghost' is not a custom provider.")
   })
 
   it('marks a disabled provider in the listing', async () => {
@@ -190,6 +194,7 @@ describe('provider enable, disable and delete', () => {
     const again = await cli.run(['provider', 'disable', '--name', 'moonpay'])
 
     expect(again.code).toBe(1)
+    expect(again.output).toContain("'moonpay' is already disabled.")
   })
 })
 
@@ -210,12 +215,14 @@ describe('token registry', () => {
     const result = await cli.run(['token', 'info', '--network', 'ethereum', '--token', 'nope'])
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain("Token 'nope' not found on 'ethereum'.")
   })
 
   it('reports a network that does not exist', async () => {
     const result = await cli.run(['token', 'list', '--network', 'atlantis'])
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain("Network 'atlantis' is not supported.")
   })
 
   it('adds a custom token and reads it back', async () => {
@@ -277,6 +284,7 @@ describe('network registry', () => {
     })])
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain("Network 'ethereum' already exists.")
   })
 
   it('refuses a module that is not a wallet module', async () => {
@@ -292,6 +300,7 @@ describe('network registry', () => {
     const result = await cli.run(['network', 'delete', '--name', 'ethereum'])
 
     expect(result.code).toBe(1)
+    expect(result.output).toContain("'ethereum' is a built-in network and cannot be deleted.")
   })
 })
 
@@ -308,5 +317,134 @@ describe('module registry', () => {
 
     expect(indexer.pinned).toContain('github:')
     expect(indexer.status).toBe('ok')
+  })
+})
+
+describe('config', () => {
+  it('reports where the config file lives', async () => {
+    const result = await cli.run(['config', 'path'])
+
+    expect(result.stdout.trim()).toBe(cli.configPath())
+  })
+
+  it('round-trips a value through set and get', async () => {
+    await cli.run(['config', 'set', '--key', 'defaults.defaultIndex', '--value', '3'])
+
+    const result = await cli.run(['config', 'get', '--key', 'defaults.defaultIndex'])
+
+    expect(result.stdout.trim()).toBe('3')
+  })
+
+  it('reports a key that was never set, and still exits 0', async () => {
+    const result = await cli.run(['config', 'get', '--key', 'nope.missing'])
+
+    expect(result.output).toContain("Key 'nope.missing' is not set.")
+    expect(result.code).toBe(0)
+  })
+
+  it('writes the value where the file can be read back', async () => {
+    await cli.run(['config', 'set', '--key', 'providers.bitfinex.config.apiKey', '--value', 'k'])
+
+    expect(cli.readConfig().providers.bitfinex.config.apiKey).toBe('k')
+  })
+
+  it('clears everything on reset', async () => {
+    await cli.run(['config', 'set', '--key', 'defaults.defaultIndex', '--value', '3'])
+
+    await cli.run(['config', 'reset', '--all'])
+    const result = await cli.run(['config', 'get', '--key', 'defaults.defaultIndex'])
+
+    expect(result.output).toContain("Key 'defaults.defaultIndex' is not set.")
+  })
+
+  it('keeps the config owner-only after a write', async () => {
+    await cli.run(['config', 'set', '--key', 'defaults.defaultIndex', '--value', '1'])
+
+    expect(statSync(cli.configPath()).mode & 0o077).toBe(0)
+  })
+})
+
+describe('network info, enable and disable', () => {
+  it('shows a packaged network', async () => {
+    const info = await cli.json(['network', 'info', '--network', 'ethereum'])
+
+    expect(info).toMatchObject({
+      name: 'ethereum',
+      displayName: 'Ethereum',
+      module: '@tetherto/wdk-wallet-evm'
+    })
+  })
+
+  it('reports a network that is not registered', async () => {
+    const result = await cli.run(['network', 'info', '--network', 'atlantis'])
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain("Network 'atlantis' is not supported.")
+  })
+
+  it('drops a disabled network from the listing', async () => {
+    await cli.run(['network', 'disable', '--name', 'polygon'])
+
+    const { networks } = await cli.json(['network', 'list'])
+
+    expect(networks.find((n) => n.name === 'polygon').enabled).toBe(false)
+  })
+
+  it('brings a disabled network back', async () => {
+    await cli.run(['network', 'disable', '--name', 'polygon'])
+
+    await cli.run(['network', 'enable', '--name', 'polygon'])
+    const { networks } = await cli.json(['network', 'list'])
+
+    expect(networks.find((n) => n.name === 'polygon').enabled).toBe(true)
+  })
+
+  it('refuses to disable a network twice', async () => {
+    await cli.run(['network', 'disable', '--name', 'polygon'])
+
+    const again = await cli.run(['network', 'disable', '--name', 'polygon'])
+
+    expect(again.code).toBe(1)
+  })
+})
+
+describe('token enable and disable', () => {
+  it('marks a disabled token in the listing', async () => {
+    await cli.run(['token', 'disable', '--network', 'ethereum', '--token', 'usdt'])
+
+    const { disabled } = await cli.json(['token', 'list', '--network', 'ethereum'])
+
+    expect(disabled).toContain('ethereum/usdt')
+  })
+
+  it('brings a disabled token back', async () => {
+    await cli.run(['token', 'disable', '--network', 'ethereum', '--token', 'usdt'])
+
+    await cli.run(['token', 'enable', '--network', 'ethereum', '--token', 'usdt'])
+    const { disabled } = await cli.json(['token', 'list', '--network', 'ethereum'])
+
+    expect(disabled).not.toContain('ethereum/usdt')
+  })
+})
+
+describe('module enable and disable', () => {
+  it('reports a disabled module and hides its providers', async () => {
+    await cli.run(['module', 'disable', '--name', '@tetherto/wdk-protocol-fiat-moonpay'])
+
+    const { modules } = await cli.json(['module', 'list'])
+    const { providers } = await cli.json(['provider', 'list'])
+
+    expect(modules.find((m) => m.module === '@tetherto/wdk-protocol-fiat-moonpay').status)
+      .toBe('disabled')
+    expect(providers.find((p) => p.name === 'moonpay')).toBeUndefined()
+  })
+
+  it('brings a disabled module back', async () => {
+    await cli.run(['module', 'disable', '--name', '@tetherto/wdk-protocol-fiat-moonpay'])
+
+    await cli.run(['module', 'enable', '--name', '@tetherto/wdk-protocol-fiat-moonpay'])
+    const { modules } = await cli.json(['module', 'list'])
+
+    expect(modules.find((m) => m.module === '@tetherto/wdk-protocol-fiat-moonpay').status).toBe('ok')
   })
 })
