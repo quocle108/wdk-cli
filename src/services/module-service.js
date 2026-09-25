@@ -35,17 +35,25 @@ const CLI_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
  */
 
 /**
- * Returns whether a package name is a WDK wallet or protocol module
- * (`wdk-wallet-*` or `wdk-protocol-*`, any scope). These are the packages the
- * catalog manages as dependencies; core packages (`@tetherto/wdk`, `-utils`,
- * `-wallet`, `-asset-registry`) and unrelated deps do not match.
+ * WDK packages the CLI depends on directly. They match the module naming
+ * pattern but are contracts and helpers rather than swappable implementations,
+ * so the catalog must not manage them.
+ */
+const CORE_PACKAGES = new Set(['wdk-pricing-provider'])
+
+/**
+ * Returns whether a package name is a WDK module the catalog manages
+ * (`wdk-wallet-*`, `wdk-protocol-*` or `wdk-pricing-*`, any scope). These are
+ * swappable implementations; core packages (`@tetherto/wdk`, `-utils`,
+ * `-wallet`, `-asset-registry`, `-pricing-provider`) are ordinary dependencies
+ * and do not match.
  *
  * @param {string} name - The npm package name (optionally scoped).
  * @returns {boolean} True when the name is a WDK module package.
  */
 export function isWdkModulePackage (name) {
   const bare = name.includes('/') ? name.slice(name.indexOf('/') + 1) : name
-  return /^wdk-wallet-.+/.test(bare) || /^wdk-protocol-.+/.test(bare)
+  return !CORE_PACKAGES.has(bare) && /^wdk-(wallet|protocol|pricing)-.+/.test(bare)
 }
 
 /**

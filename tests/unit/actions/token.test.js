@@ -22,7 +22,7 @@ const ETH_ENTRY = {
   decimals: 18,
   isNative: true,
   nativeId: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
-  metadata: { slugs: { moonpay: 'eth', bitfinex: 'tETHUSD', transak: { slug: 'ETH', network: 'ethereum' } } }
+  metadata: { slugs: { moonpay: 'eth', transak: { slug: 'ETH', network: 'ethereum' } } }
 }
 
 const USDT_ENTRY = {
@@ -31,7 +31,7 @@ const USDT_ENTRY = {
   isNative: false,
   address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
   metadata: {
-    slugs: { indexer: 'usdt', moonpay: 'usdt', bitfinex: 'tUSTUSD', transak: { slug: 'USDT', network: 'ethereum' } }
+    slugs: { indexer: 'usdt', moonpay: 'usdt', bitfinex: 'UST', transak: { slug: 'USDT', network: 'ethereum' } }
   }
 }
 
