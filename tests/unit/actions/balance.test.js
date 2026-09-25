@@ -17,12 +17,16 @@ import { jest } from '@jest/globals'
 const requireUnlocked = jest.fn()
 const daemonGetBalance = jest.fn()
 const convertToUsd = jest.fn()
+const convertManyNativeToUsd = jest.fn()
 
 jest.unstable_mockModule('../../../src/daemon/client.js', () => ({
   daemonClient: { requireUnlocked, getBalance: daemonGetBalance }
 }))
 
-jest.unstable_mockModule('../../../src/services/price-service.js', () => ({ convertToUsd }))
+jest.unstable_mockModule('../../../src/services/price-service.js', () => ({
+  convertToUsd,
+  convertManyNativeToUsd
+}))
 
 const { getBalance, getAllBalances } = await import('../../../src/actions/balance.js')
 
@@ -33,6 +37,7 @@ beforeEach(() => {
   requireUnlocked.mockReset()
   daemonGetBalance.mockReset()
   convertToUsd.mockReset()
+  convertManyNativeToUsd.mockReset()
   requireUnlocked.mockResolvedValue('main')
 })
 
@@ -80,7 +85,7 @@ describe('getAllBalances', () => {
     daemonGetBalance.mockImplementation(async (network) =>
       network === 'ethereum' ? DUMMY_BALANCE : Promise.reject(new Error('dummy provider down'))
     )
-    convertToUsd.mockResolvedValue(2000)
+    convertManyNativeToUsd.mockResolvedValue(new Map([['ethereum', 2000]]))
 
     const result = await getAllBalances({ index: 0 })
 
@@ -99,5 +104,36 @@ describe('getAllBalances', () => {
       totalUsd: 2000
     })
     expect(daemonGetBalance).toHaveBeenCalledWith('ethereum', 0, undefined, 'main')
+  })
+
+  it('prices every funded network in a single call to the feed', async () => {
+    daemonGetBalance.mockImplementation(async (network) =>
+      network === 'ethereum' || network === 'bitcoin'
+        ? DUMMY_BALANCE
+        : Promise.reject(new Error('dummy provider down'))
+    )
+    convertManyNativeToUsd.mockResolvedValue(new Map([['ethereum', 2000], ['bitcoin', 100000]]))
+
+    const result = await getAllBalances({ index: 0 })
+
+    expect(convertManyNativeToUsd).toHaveBeenCalledTimes(1)
+    expect(convertManyNativeToUsd).toHaveBeenCalledWith([
+      { network: 'bitcoin', amount: 1000000000000000000n },
+      { network: 'ethereum', amount: 1000000000000000000n }
+    ])
+    expect(result.totalUsd).toBe(102000)
+  })
+
+  it('reports zero USD and still lists balances when no feed is available', async () => {
+    daemonGetBalance.mockImplementation(async (network) =>
+      network === 'ethereum' ? DUMMY_BALANCE : Promise.reject(new Error('dummy provider down'))
+    )
+    convertManyNativeToUsd.mockRejectedValue(new Error('No price feed is available.'))
+
+    const result = await getAllBalances({ index: 0 })
+
+    expect(result.balances[0].usd).toBe(0)
+    expect(result.balances[0].formatted).toBe('1 ETH')
+    expect(result.totalUsd).toBe(0)
   })
 })

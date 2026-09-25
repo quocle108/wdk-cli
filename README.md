@@ -53,7 +53,7 @@ A multi-chain crypto wallet for AI agents, built on [Wallet Development Kit (WDK
 
 - **Wallet** — Multiple named wallets with per-wallet passphrases and BIP-39 seed phrases, encrypted at rest with AES-256-GCM. Background daemon holds keys in memory after unlock, with per-wallet TTL
 - **Network** — Bitcoin, Ethereum, Polygon, Arbitrum, Base, BSC, Avalanche, Solana, Tron, Spark, Smart Account (ERC-4337) + testnets. Add custom networks with `network create`
-- **Token** — Built-in registry of tokens per network (symbol, decimals, address, indexer/MoonPay/Transak/Bitfinex mappings). Add your own with `token add`
+- **Token** — Built-in registry of tokens per network (symbol, decimals, address, indexer/MoonPay/Transak/price-feed mappings). Add your own with `token add`
 - **Get** — Derive wallet addresses, check balances, and view transaction history across all networks
 - **Send** — Native and token transfers with fee estimation and dry-run preview. Decimal amounts by default
 - **Buy/Sell** — On/off ramp via MoonPay or Transak (buy crypto with fiat, sell crypto for fiat)
@@ -203,7 +203,7 @@ Example spec file:
       "symbol": "ETH",
       "decimals": 18,
       "isNative": true,
-      "metadata": { "slugs": { "moonpay": "eth", "bitfinex": "tETHUSD" } }
+      "metadata": { "slugs": { "moonpay": "eth" } }
     },
     {
       "token": "usdt",
@@ -211,7 +211,7 @@ Example spec file:
       "decimals": 6,
       "isNative": false,
       "address": "0x...",
-      "metadata": { "slugs": { "indexer": "usdt", "moonpay": "usdt", "bitfinex": "tUSTUSD" } }
+      "metadata": { "slugs": { "indexer": "usdt", "moonpay": "usdt", "bitfinex": "UST" } }
     }
   ]
 }
@@ -235,7 +235,7 @@ Deleting a custom network (`wdk network delete --name <n>`) also removes its reg
 
 ### Tokens
 
-The CLI ships with a registry (`wdk.tokens.json`) of all known tokens per network — symbol, decimals, contract address, and provider mappings (indexer code, MoonPay asset code, Bitfinex pair). The `--token` flag on `get balance` / `send` / `get history` / `buy` / `sell` resolves against this registry.
+The CLI ships with a registry (`wdk.tokens.json`) of all known tokens per network — symbol, decimals, contract address, and provider mappings (indexer code, MoonPay asset code, price-feed currency code). The `--token` flag on `get balance` / `send` / `get history` / `buy` / `sell` resolves against this registry.
 
 ```bash
 wdk token list                                                 # All tokens, grouped by network
@@ -266,7 +266,7 @@ wdk token enable --network <n> --token <t>                     # Bring it back
 | `metadata.slugs` | No | How external systems name this token, keyed by system. Each value is a slug string, or an object carrying `slug` plus the extra fields that system's API takes with it. |
 | `metadata.slugs.indexer` | No | Token slug sent to the WDK indexer (`/api/v1/{chain}/{indexerSlug}/{slug}/{addr}/token-transfers`). Without it, this token is skipped by `wdk get history`. **Requires the network to also have `indexerSlug` set** — a token slug alone doesn't enable the indexer; the network's `indexerSlug` is what tells the CLI the indexer is available for that chain. |
 | `metadata.slugs.moonpay` | No | MoonPay asset code used in the buy/sell URL. Without it, `wdk buy`/`wdk sell` rejects the token. |
-| `metadata.slugs.bitfinex` | No | Bitfinex pair symbol used to fetch a USD price. Without it, `wdk get balance` shows the balance but no USD column for that token. |
+| `metadata.slugs.bitfinex` | No | The currency code the price feed knows this token by, when it differs from `symbol`. Without it the CLI asks the feed for `symbol` itself, so most tokens need no entry — see [USD prices](#usd-prices). |
 
 Every entry under `metadata.slugs` is optional. Omit a system when the integration doesn't apply — the rest of the CLI keeps working; only that feature is disabled for the token. The block grows by key, so a newly registered provider needs no schema change: `{"slugs":{"transak":{"slug":"USDT","network":"tron"}}}`. Unknown fields *beside* `slugs` are rejected, so a mistyped mapping fails loudly instead of being dropped. Unknown top-level fields (outside `metadata`) still pass through silently so you can annotate entries with comments, tags, owner, etc.
 
@@ -275,10 +275,10 @@ Every entry under `metadata.slugs` is optional. Omit a system when the integrati
 | system | the slug becomes |
 | --- | --- |
 | `indexer` | the token segment of the indexer URL |
-| `bitfinex` | the trading-pair symbol queried for the USD price |
+| a pricing provider | the `from` currency of the USD price lookup |
 | a fiat provider | `cryptoAsset` in the SDK's `quoteBuy` / `buy` / `quoteSell` / `sell` calls |
 
-That is why `usdt`, `tUSTUSD` and `usdt_trx` can all be correct for the same token: three systems, three names.
+That is why `usdt`, `UST` and `usdt_trx` can all be correct for the same token: three systems, three names.
 
 For a fiat provider the object form splits in two — `slug` fills the contract's required `cryptoAsset`, and **every other key is forwarded verbatim** as the call's `config` bag, which the CLI neither validates nor understands:
 
@@ -287,7 +287,7 @@ For a fiat provider the object form splits in two — `slug` fills the contract'
 // → quoteBuy({ cryptoAsset: "USDT", fiatCurrency: "usd", config: { network: "tron" } })
 ```
 
-This is what lets a new fiat provider be added as data: whatever extra fields it takes, write them beside `slug` and they reach it untouched. There is deliberately **no fallback** — the CLI never guesses a slug from the token symbol, because a plausible guess can name a real asset on the wrong chain.
+This is what lets a new fiat provider be added as data: whatever extra fields it takes, write them beside `slug` and they reach it untouched. For a fiat provider there is deliberately **no fallback** — the CLI never guesses a slug from the token symbol, because a plausible guess can name a real asset on the wrong chain, and the mistake is paid for in real money. Pricing is the one system that does fall back, for the reasons in [USD prices](#usd-prices).
 
 Example full entry (file or inline):
 
@@ -303,11 +303,41 @@ Example full entry (file or inline):
     "slugs": {
       "indexer": "usdt",
       "moonpay": "usdt",
-      "bitfinex": "tUSTUSD"
+      "bitfinex": "UST"
     }
   }
 }
 ```
+
+#### USD prices
+
+USD figures come from `bitfinex`, an entry of the `providers` registry with
+`kind: pricing` (see [Provider](#provider)); `wdk provider disable --name
+bitfinex` drops the USD column and changes nothing else.
+
+To use a different feed, register one with `kind: pricing`. Exactly one may be
+enabled at a time, so disable the current one first:
+
+```bash
+wdk module add --name @tetherto/wdk-pricing-coingecko-http
+wdk provider disable --name bitfinex
+wdk provider add '{"name":"coingecko","kind":"pricing","module":"@tetherto/wdk-pricing-coingecko-http"}'
+```
+
+Adding or enabling a second feed is refused, naming the one already on. Whatever
+you put in `config` reaches the module untouched, which is where a feed that
+keeps its own asset ids wants them — CoinGecko needs
+`{"coinIds":{"SOL":"solana","TRX":"tron"}}` for anything outside its small
+built-in map.
+
+The CLI asks it for the token's own `symbol`, so **most tokens need no
+`bitfinex` slug**. Add one only when the symbol is not what the feed calls the
+asset — a different code (Bitfinex lists Tether as `UST`, not `USDT`) or a
+testnet-prefixed symbol (`tBTC` → `BTC`). The value is a currency code, not a
+trading pair: `tUSTUSD` will not resolve.
+
+Slugs are keyed by provider name, so a feed you add yourself starts with none
+and falls back to `symbol` for every token.
 
 Custom entries (added via `token add`) live under `customTokens.<network>.<ticker>` and survive `wdk config reset --all`. Built-in entries can be **overridden** by adding a custom entry with the same ticker — a yellow warning is shown when this happens. `token delete` only removes custom entries; the built-in falls through after deletion.
 
@@ -485,14 +515,14 @@ wdk provider enable --name rhinofi
 
 A **provider** is a named, configured use of a protocol module: `velora` is the swap protocol backed by `@tetherto/wdk-protocol-swap-velora-evm`. The packaged ones live in the `providers` registry of `wdk.config.json`; your own are stored in user config and merged after them.
 
-Each entry declares a `kind` — `swap`, `bridge`, `swidge`, or `fiat` — and that declaration is what decides which requests reach it. `wdk swap` quotes the `swap` and `swidge` providers, `wdk bridge` the `bridge` and `swidge` ones, and `wdk buy` / `wdk sell` use the `fiat` ones, all without importing a module first.
+Each entry declares a `kind` — `swap`, `bridge`, `swidge` (which serves both), `fiat`, or `pricing` — and that declaration is what decides which requests reach it. `wdk swap` quotes the `swap` and `swidge` providers, `wdk bridge` the `bridge` and `swidge` ones, `wdk buy` / `wdk sell` use the `fiat` ones, and the `pricing` entry supplies every USD figure, all without importing a module first.
 
 To register your own, install the package with `wdk module add`, then name it in a spec:
 
 | Field | Required | Meaning |
 |---|---|---|
 | `name` | Yes | Short name used by `--protocol`. Lowercase alphanumeric with hyphens, and not one already registered. |
-| `kind` | Yes | `swap`, `bridge`, `swidge`, or `fiat`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. |
+| `kind` | Yes | `swap`, `bridge`, `swidge`, `fiat`, or `pricing`. Checked against the module when you add it, so a mistyped kind fails then rather than at quote time. Only one `pricing` provider may be enabled at a time — adding or enabling a second is refused and names the active one. |
 | `module` | Yes | The package backing it. Must already be registered, built-in or added with `wdk module add`. |
 | `config` | No | Settings applied on every network, such as an API key. |
 | `networks` | No | Per-network settings keyed by network name, shallow-merged over `config`. |

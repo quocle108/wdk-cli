@@ -79,7 +79,7 @@ const USDT_ETH_ENTRY = {
   isNative: false,
   address: USDT_ETH,
   metadata: {
-    slugs: { indexer: 'usdt', moonpay: 'usdt', bitfinex: 'tUSTUSD', transak: { slug: 'USDT', network: 'ethereum' } }
+    slugs: { indexer: 'usdt', moonpay: 'usdt', bitfinex: 'UST', transak: { slug: 'USDT', network: 'ethereum' } }
   }
 }
 
@@ -122,7 +122,7 @@ describe('token-service', () => {
       isNative: true,
       nativeId: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
       metadata: {
-        slugs: { moonpay: 'eth', bitfinex: 'tETHUSD', transak: { slug: 'ETH', network: 'ethereum' } }
+        slugs: { moonpay: 'eth', transak: { slug: 'ETH', network: 'ethereum' } }
       }
     })
   })
@@ -133,7 +133,7 @@ describe('token-service', () => {
       decimals: 8,
       isNative: true,
       metadata: {
-        slugs: { indexer: 'btc', moonpay: 'btc', bitfinex: 'tBTCUSD', transak: { slug: 'BTC', network: 'mainnet' } }
+        slugs: { indexer: 'btc', moonpay: 'btc', transak: { slug: 'BTC', network: 'mainnet' } }
       }
     })
   })
@@ -149,7 +149,7 @@ describe('token-service', () => {
       isNative: false,
       address: USDT_SOL,
       metadata: {
-        slugs: { moonpay: 'usdt_sol', bitfinex: 'tUSTUSD', transak: { slug: 'USDT', network: 'solana' } }
+        slugs: { moonpay: 'usdt_sol', bitfinex: 'UST', transak: { slug: 'USDT', network: 'solana' } }
       }
     })
     expect(getTokenByAddress('solana', USDT_SOL.toLowerCase())).toBeUndefined()
@@ -233,7 +233,8 @@ describe('token-service', () => {
   it.each([
     ['indexer', 'usdt', 'usdt'],
     ['moonpay', 'eth', 'eth'],
-    ['bitfinex', 'xaut', 'tXAUT:USD']
+    ['moonpay', 'xaut', 'xaut'],
+    ['bitfinex', 'usdt', 'UST']
   ])('returns the %s slug for a token that has one', (system, token, expected) => {
     expect(getTokenSlug('ethereum', token, system)).toBe(expected)
   })
@@ -300,7 +301,7 @@ describe('token overrides', () => {
     decimals: 18,
     isNative: true,
     nativeId: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
-    metadata: { slugs: { moonpay: 'eth', bitfinex: 'tETHUSD', transak: { slug: 'ETH', network: 'ethereum' } } }
+    metadata: { slugs: { moonpay: 'eth', transak: { slug: 'ETH', network: 'ethereum' } } }
   }
 
   it('hides a disabled built-in token from every lookup', () => {

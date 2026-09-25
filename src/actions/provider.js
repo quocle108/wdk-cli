@@ -14,6 +14,8 @@
 
 import {
   PROTOCOL_KINDS,
+  ADDABLE_KINDS,
+  assertSinglePricingFeed,
   getProtocols,
   getAllProtocols,
   getProtocolsIncludingDisabled,
@@ -28,11 +30,13 @@ import {
   removeCustomProvider
 } from '../services/protocol-service.js'
 import { isRegisteredModule } from '../services/module-service.js'
+import { clientClass } from '../services/pricing/index.js'
 import { hasOwn } from '../services/override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
 /** @typedef {import('../config/wdk-config.js').WdkProtocolEntry} WdkProtocolEntry */
 /** @typedef {import('../config/wdk-config.js').ProtocolKind} ProtocolKind */
+/** @typedef {import('../services/protocol-service.js').ProtocolClass} ProtocolClass */
 
 /**
  * @typedef {Object} ProviderSpec
@@ -148,6 +152,16 @@ export function validateProviderSpec (data) {
       ErrorCode.INVALID_ARGUMENT
     )
   }
+  if (!ADDABLE_KINDS.includes(kind)) {
+    const label = kind[0].toUpperCase() + kind.slice(1)
+    throw new WdkCliError(
+      `${label} providers cannot be added.`,
+      ErrorCode.INVALID_ARGUMENT,
+      `${label} providers ship with the CLI. See the available ones with: wdk provider list`
+    )
+  }
+  assertSinglePricingFeed(kind, name)
+
   const module = obj.module
   if (typeof module !== 'string' || !module) {
     throw new WdkCliError(
@@ -205,7 +219,10 @@ export function validateProviderSpec (data) {
  * @throws {WdkCliError} INVALID_ARGUMENT when the module does not implement the declared kind.
  */
 export async function verifyProviderKind (spec) {
-  const ProtocolClass = await loadProtocolClass(spec.module)
+  const loaded = await loadProtocolClass(spec.module)
+  const ProtocolClass = spec.kind === 'pricing'
+    ? /** @type {ProtocolClass} */ (clientClass(loaded, spec.name))
+    : loaded
   assertImplementsKind(spec.name, spec.kind, ProtocolClass)
 }
 
