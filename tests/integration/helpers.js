@@ -42,11 +42,16 @@ const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
 export class Cli {
   /** The config directory this instance runs against. */
   configHome
+  /** A throwaway home directory, so nothing can reach the real one. */
+  home
   /** The passphrase every wallet in this instance is created with. */
   passphrase
 
   constructor () {
     this.configHome = mkdtempSync(join(tmpdir(), 'wdk-it-'))
+    // `mcp setup` and friends resolve paths from homedir(), not XDG_CONFIG_HOME,
+    // so without this they would edit the developer's own AI-tool config.
+    this.home = mkdtempSync(join(tmpdir(), 'wdk-home-'))
     // Generated per instance and thrown away with the directory: these wallets
     // exist only for the length of one test file.
     this.passphrase = `pw-${randomBytes(12).toString('hex')}`
@@ -70,6 +75,7 @@ export class Cli {
       const child = spawn(process.execPath, [BIN, ...args], {
         env: {
           ...process.env,
+          HOME: this.home,
           XDG_CONFIG_HOME: this.configHome,
           WDK_PASSPHRASE: options.passphrase ?? (options.unlocked ? this.passphrase : undefined),
           NO_COLOR: '1',
@@ -167,5 +173,6 @@ export class Cli {
       // No daemon was started, or it is already gone.
     }
     rmSync(this.configHome, { recursive: true, force: true })
+    rmSync(this.home, { recursive: true, force: true })
   }
 }
