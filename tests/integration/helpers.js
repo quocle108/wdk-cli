@@ -61,6 +61,8 @@ export class Cli {
    *   `--*-stdin` flags.
    * @param {boolean} [options.unlocked] - Pass the instance passphrase through
    *   `WDK_PASSPHRASE`, the documented way to run wallet commands unattended.
+   * @param {string} [options.passphrase] - Use this passphrase instead of the
+   *   instance one, for a wallet whose passphrase has been changed.
    * @returns {Promise<CliResult>} What the command printed and exited with.
    */
   run (args, options = {}) {
@@ -69,7 +71,7 @@ export class Cli {
         env: {
           ...process.env,
           XDG_CONFIG_HOME: this.configHome,
-          ...(options.unlocked ? { WDK_PASSPHRASE: this.passphrase } : { WDK_PASSPHRASE: undefined }),
+          WDK_PASSPHRASE: options.passphrase ?? (options.unlocked ? this.passphrase : undefined),
           NO_COLOR: '1',
           NODE_OPTIONS: '--disable-warning=ExperimentalWarning'
         },
@@ -151,11 +153,19 @@ export class Cli {
   }
 
   /**
-   * Removes the config directory.
+   * Stops the daemon this instance started, then removes its config directory.
+   * Without the kill each instance leaves a daemon holding a socket, and a
+   * suite's worth of them starves the next test of resources.
    *
    * @returns {void}
    */
   cleanup () {
+    try {
+      const pid = Number(readFileSync(join(this.configHome, 'wdk-cli', 'daemon.pid'), 'utf8').trim())
+      if (pid > 0) process.kill(pid, 'SIGTERM')
+    } catch {
+      // No daemon was started, or it is already gone.
+    }
     rmSync(this.configHome, { recursive: true, force: true })
   }
 }
