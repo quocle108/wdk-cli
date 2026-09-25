@@ -34,10 +34,13 @@
     "sync-modules": "node scripts/sync-module-deps.mjs",
     "typecheck": "tsc --noEmit -p jsconfig.json",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --testPathIgnorePatterns tests/integration",
-    "test:integration": "cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration --testTimeout=60000",
+    "test:integration": "cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration --runInBand --testTimeout=60000",
     "test:coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --coverage"
   },
   "jest": {
+    "setupFiles": [
+      "<rootDir>/tests/setup.js"
+    ],
     "testEnvironment": "node",
     "testMatch": [
       "<rootDir>/tests/**/*.test.js"
