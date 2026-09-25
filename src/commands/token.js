@@ -47,19 +47,30 @@ function printTokenEntry (entry, token) {
   console.log(`    Decimals: ${entry.decimals}`)
   console.log(`    Native:   ${entry.isNative ? 'yes' : 'no'}`)
   if (entry.address) console.log(`    Address:  ${entry.address}`)
-  if (entry.metadata) {
-    const metaLine = Object.entries(entry.metadata)
-      .map(([k, v]) => `${k}=${v}`)
-      .join(', ')
-    if (metaLine) console.log(`    Metadata: ${metaLine}`)
+  const slugs = entry.metadata?.slugs
+  if (slugs && Object.keys(slugs).length > 0) {
+    console.log(`    Slugs:    ${formatSlugs(slugs)}`)
   }
+}
+
+/**
+ * Renders a token's external mappings as `system=slug` pairs.
+ *
+ * @param {Record<string, import('../config/wdk-tokens.js').TokenSlug>} [slugs] - The mappings.
+ * @returns {string} The rendered pairs, or a dim dash when there are none.
+ */
+function formatSlugs (slugs) {
+  const pairs = Object.entries(slugs ?? {}).map(
+    ([system, entry]) => `${system}=${typeof entry === 'string' ? entry : entry.slug}`
+  )
+  return pairs.length > 0 ? pairs.join(' ') : chalk.dim('—')
 }
 
 /**
  * Builds a single table row for a token entry.
  *
  * Common columns: Token, Symbol, Decimals, Native, Address.
- * Provider metadata: Indexer, MoonPay, Bitfinex.
+ * External mappings: Slugs, as `system=slug` pairs.
  * Final column: Source (built-in vs custom).
  *
  * @param {string} network
@@ -75,9 +86,7 @@ function tokenRow (network, token, entry) {
     String(entry.decimals),
     entry.isNative ? 'yes' : '',
     entry.address ? formatAddress(entry.address, true) : chalk.dim('—'),
-    entry.metadata?.indexerSlug ?? chalk.dim('—'),
-    entry.metadata?.moonpaySlug ?? chalk.dim('—'),
-    entry.metadata?.bitfinexSlug ?? chalk.dim('—'),
+    formatSlugs(entry.metadata?.slugs),
     source === 'custom' ? 'custom' : chalk.dim('built-in')
   ]
 }
@@ -88,9 +97,7 @@ const COMMON_COLUMNS = [
   'Decimals',
   'Native',
   'Address',
-  'Indexer',
-  'MoonPay',
-  'Bitfinex',
+  'Slugs',
   'Source',
   'Status'
 ]

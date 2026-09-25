@@ -23,7 +23,7 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
  * @property {boolean} [testnet] - True when the network is a testnet.
  * @property {string} [indexerSlug] - Optional override for the indexer chain slug.
  *   Defaults to the network name. Set only when they differ (e.g. `smart-account-ethereum` → `ethereum`).
- *   Per-token indexer slugs live in `wdk.tokens.json` under `metadata.indexerSlug`.
+ *   Per-token indexer slugs live in `wdk.tokens.json` under `metadata.slugs.indexer`.
  * @property {string} [chainId] - The CAIP-2 chain id (e.g. "eip155:1", "tron:mainnet").
  * @property {Record<string, unknown>} [config] - The per-network module configuration (RPC URL, chainId, etc.).
  * @property {Record<string, Record<string, unknown>>} [providers] - Per-network provider config overrides,
@@ -53,20 +53,22 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
  */
 
 /**
- * What a protocol provider does: `swap` serves same-network swaps, `bridge`
- * moves one token across networks, `swidge` serves both.
+ * What a provider does: `swap` serves same-network swaps, `bridge` moves one
+ * token across networks, `swidge` serves both, and `fiat` is an on/off ramp.
  *
- * @typedef {'swap' | 'bridge' | 'swidge'} ProtocolKind
+ * @typedef {'swap' | 'bridge' | 'swidge' | 'fiat'} ProtocolKind
  */
 
 /**
  * @typedef {Object} WdkProtocolEntry
- * @property {ProtocolKind} kind - What the provider does: same-network swaps, cross-network bridging, or both.
+ * @property {ProtocolKind} kind - What the provider does: same-network swaps, cross-network bridging, both, or fiat on/off ramping.
  * @property {string} module - The protocol module package name; its version is pinned in `modules`.
  * @property {Record<string, unknown>} [config] - General protocol config applied on every network
  *   (e.g. API keys); shallow-merged under any per-network override in `networks.<n>.providers.<name>`.
  * @property {Record<string, Record<string, unknown>>} [networks] - Per-network config overrides keyed by
  *   network name. Used by user-added providers, which cannot edit the packaged network entries.
+ * @property {string[]} [endpointKeys] - Config keys the module takes as a callback rather than a
+ *   value. The CLI stores a URL for each and POSTs to it when the module calls back.
  */
 
 /**
@@ -74,7 +76,7 @@ const walletsFileRaw = createRequire(import.meta.url)('../../wdk.config.json')
  * @property {number} version - The config file format version.
  * @property {Record<string, unknown>} defaults - The default global configuration.
  * @property {Record<string, WdkModuleEntry>} modules - The WDK module registry keyed by package name.
- * @property {Record<string, WdkProtocolEntry>} [providers] - Swap/bridge/swidge protocol providers keyed by short name.
+ * @property {Record<string, WdkProtocolEntry>} [providers] - The service providers keyed by short name.
  * @property {Record<string, WdkNetworkEntry>} networks - The network definitions keyed by network name.
  */
 

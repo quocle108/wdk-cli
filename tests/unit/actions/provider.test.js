@@ -86,6 +86,37 @@ describe('validateProviderSpec', () => {
     expect(validateProviderSpec({ ...LIFI_SPEC, note: 'ignored' })).toEqual(LIFI_SPEC)
   })
 
+  it('accepts a fiat provider, which needs no CLI-side adapter', () => {
+    const spec = validateProviderSpec({
+      name: 'banxa',
+      kind: 'fiat',
+      module: CUSTOM_MODULE,
+      config: { apiKey: '', widgetUrl: '' },
+      endpointKeys: ['widgetUrl']
+    })
+
+    expect(spec).toEqual({
+      name: 'banxa',
+      kind: 'fiat',
+      module: CUSTOM_MODULE,
+      endpointKeys: ['widgetUrl'],
+      config: { apiKey: '', widgetUrl: '' }
+    })
+  })
+
+  it.each([
+    ['a bare string', 'widgetUrl'],
+    ['an empty entry', ['']],
+    ['a non-string entry', [1]]
+  ])('rejects endpointKeys given as %s', (_label, endpointKeys) => {
+    expect(() => validateProviderSpec({ name: 'banxa', kind: 'fiat', module: CUSTOM_MODULE, endpointKeys })).toThrow(
+      expect.objectContaining({
+        message: 'Provider spec "endpointKeys" must be an array of non-empty strings.',
+        code: 'INVALID_ARGUMENT'
+      })
+    )
+  })
+
   it('accepts a spec without config or networks', () => {
     expect(validateProviderSpec({ name: 'lifi', kind: 'swap', module: CUSTOM_MODULE })).toEqual({
       name: 'lifi',
@@ -135,9 +166,9 @@ describe('validateProviderSpec', () => {
     )
   })
 
-  it.each([undefined, 'fiat', 'dex', 7])('rejects the kind %p with the accepted list', (kind) => {
+  it.each([undefined, 'dex', 'price', 7])('rejects the kind %p with the accepted list', (kind) => {
     expect(() => validateProviderSpec({ name: 'lifi', kind, module: CUSTOM_MODULE })).toThrow(
-      'Provider spec "kind" must be one of: swap, bridge, swidge'
+      'Provider spec "kind" must be one of: swap, bridge, swidge, fiat'
     )
   })
 
@@ -234,10 +265,17 @@ describe('listProviders', () => {
 
     expect(result.count).toBe(PACKAGED_NAMES.length)
     expect(result.providers.map((p) => p.name)).toEqual(PACKAGED_NAMES)
-    expect(result.providers[0]).toEqual({
+    expect(result.providers.find((p) => p.name === 'velora')).toEqual({
       name: 'velora',
       kind: 'swap',
       module: catalog.providers.velora.module,
+      source: 'built-in',
+      enabled: true
+    })
+    expect(result.providers.find((p) => p.name === 'moonpay')).toEqual({
+      name: 'moonpay',
+      kind: 'fiat',
+      module: catalog.providers.moonpay.module,
       source: 'built-in',
       enabled: true
     })
@@ -346,6 +384,27 @@ describe('addProvider', () => {
 
     expect(setConfig).toHaveBeenCalledWith('customProviders', { lifi: LIFI_ENTRY })
     expect(result).toEqual({ name: 'lifi', kind: 'swidge', module: CUSTOM_MODULE, added: true })
+  })
+
+  it('persists endpointKeys, so the module receives a callback and not a string', () => {
+    withConfig({})
+
+    addProvider({
+      name: 'banxa',
+      kind: 'fiat',
+      module: CUSTOM_MODULE,
+      endpointKeys: ['widgetUrl'],
+      config: { apiKey: '', widgetUrl: '' }
+    })
+
+    expect(setConfig).toHaveBeenCalledWith('customProviders', {
+      banxa: {
+        kind: 'fiat',
+        module: CUSTOM_MODULE,
+        endpointKeys: ['widgetUrl'],
+        config: { apiKey: '', widgetUrl: '' }
+      }
+    })
   })
 
   it('keeps existing custom providers', () => {

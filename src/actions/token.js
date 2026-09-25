@@ -25,7 +25,7 @@ import {
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
 /** @typedef {import('../services/token-service.js').TokenEntry} TokenEntry */
-/** @typedef {import('../config/wdk-tokens.js').TokenMetadata} TokenMetadata */
+/** @typedef {import('../config/wdk-tokens.js').TokenSlug} TokenSlug */
 
 /**
  * Validates that a token name matches the registry key shape: lowercase
@@ -105,6 +105,70 @@ export function validateTokenName (value) {
  */
 
 /**
+ * Validates a `metadata.slugs` block: a map of external system name to either
+ * a slug string, or an object carrying `slug` plus that system's extra fields.
+ *
+ * @param {unknown} value - The raw `slugs` value (parsed JSON, untrusted input).
+ * @returns {Record<string, TokenSlug>} The validated block.
+ * @throws {WdkCliError} INVALID_ARGUMENT when the block is not an object.
+ * @throws {WdkCliError} INVALID_ARGUMENT when a system name is `__proto__`.
+ * @throws {WdkCliError} INVALID_ARGUMENT when an entry is neither a string nor an object.
+ * @throws {WdkCliError} INVALID_ARGUMENT when a string entry is empty.
+ * @throws {WdkCliError} INVALID_ARGUMENT when an object entry has no `slug`, or its `slug` is not a non-empty string.
+ */
+function validateSlugs (value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new WdkCliError(
+      'Token "metadata.slugs" must be an object when provided.',
+      ErrorCode.INVALID_ARGUMENT
+    )
+  }
+  const raw = /** @type {Record<string, unknown>} */ (value)
+  /** @type {Record<string, TokenSlug>} */
+  const clean = Object.create(null)
+  for (const [system, entry] of Object.entries(raw)) {
+    if (system === '__proto__') {
+      throw new WdkCliError(
+        'Token "metadata.slugs" cannot use "__proto__" as a system name.',
+        ErrorCode.INVALID_ARGUMENT
+      )
+    }
+    if (typeof entry === 'string') {
+      if (!entry) {
+        throw new WdkCliError(
+          `Token "metadata.slugs.${system}" must be a non-empty string.`,
+          ErrorCode.INVALID_ARGUMENT
+        )
+      }
+      clean[system] = entry
+      continue
+    }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new WdkCliError(
+        `Token "metadata.slugs.${system}" must be a string or an object.`,
+        ErrorCode.INVALID_ARGUMENT
+      )
+    }
+    const obj = /** @type {Record<string, unknown>} */ (entry)
+    if (obj.slug === undefined) {
+      throw new WdkCliError(
+        `Token "metadata.slugs.${system}" is missing "slug".`,
+        ErrorCode.INVALID_ARGUMENT,
+        `Use a plain string, or {"slug":"<the ${system} identifier>"} plus any extra fields ${system} needs.`
+      )
+    }
+    if (typeof obj.slug !== 'string' || !obj.slug) {
+      throw new WdkCliError(
+        `Token "metadata.slugs.${system}.slug" must be a non-empty string.`,
+        ErrorCode.INVALID_ARGUMENT
+      )
+    }
+    clean[system] = /** @type {TokenSlug} */ (obj)
+  }
+  return clean
+}
+
+/**
  * Validates a structured token entry object. Throws `INVALID_ARGUMENT` on any
  * malformed field. Returns the cleaned-up entry suitable for persisting.
  *
@@ -160,20 +224,18 @@ export function validateTokenEntry (data) {
       )
     }
     const meta = /** @type {Record<string, unknown>} */ (metadata)
-    /** @type {TokenMetadata} */
-    const clean = {}
-    for (const key of /** @type {const} */ (['indexerSlug', 'moonpaySlug', 'bitfinexSlug'])) {
-      const value = meta[key]
-      if (value === undefined) continue
-      if (typeof value !== 'string' || !value) {
-        throw new WdkCliError(
-          `Token "metadata.${key}" must be a non-empty string when provided.`,
-          ErrorCode.INVALID_ARGUMENT
-        )
-      }
-      clean[key] = value
+    const unknown = Object.keys(meta).filter((key) => key !== 'slugs')
+    if (unknown.length > 0) {
+      throw new WdkCliError(
+        `Token "metadata" has unknown field(s): ${unknown.join(', ')}.`,
+        ErrorCode.INVALID_ARGUMENT,
+        'External mappings go under "metadata.slugs", keyed by system name, e.g. {"slugs":{"moonpay":"usdt_trx"}}'
+      )
     }
-    if (Object.keys(clean).length > 0) entry.metadata = clean
+    if (meta.slugs !== undefined) {
+      const slugs = validateSlugs(meta.slugs)
+      if (Object.keys(slugs).length > 0) entry.metadata = { slugs }
+    }
   }
 
   return entry

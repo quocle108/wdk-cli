@@ -21,6 +21,8 @@ import {
   getValidWalletTypes
 } from '../config/networks.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
+
+/** @typedef {import('../config/wdk-tokens.js').TokenMetadata} TokenMetadata */
 import { validateTokenEntry, validateTokenName } from './token.js'
 
 /**
@@ -88,7 +90,7 @@ export function listNetworks (input = {}) {
  * @property {number} decimals - Number of decimal places, integer 0–24.
  * @property {boolean} isNative - True for the network's native asset; false for ERC-20 / SPL / etc.
  * @property {string} [address] - Contract / mint address. Required for non-native tokens.
- * @property {{ indexerSlug?: string, moonpaySlug?: string, bitfinexSlug?: string }} [metadata] - Provider-specific identifiers.
+ * @property {TokenMetadata} [metadata] - External mappings for the token, under `slugs`.
  */
 
 /**

@@ -17,11 +17,12 @@ import WdkBaseAssetRegistry, { TokenAssetSchema } from '@tetherto/wdk-asset-regi
 import { tokensFile } from '../config/wdk-tokens.js'
 import { walletsFile } from '../config/wdk-config.js'
 import { configService } from './config-service.js'
-import { getOverrides, isDisabled, setEnabled, clearOverride } from './override-service.js'
+import { getOverrides, isDisabled, setEnabled, clearOverride, getOwn } from './override-service.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 import { humanToBaseUnits } from '../ui/parsers.js'
 
 /** @typedef {import('../config/wdk-tokens.js').TokenMetadata} TokenMetadata */
+/** @typedef {import('../config/wdk-tokens.js').TokenSlug} TokenSlug */
 /** @typedef {import('../config/wdk-tokens.js').CliTokenAsset} CliTokenAsset */
 
 /**
@@ -106,7 +107,57 @@ function customEntryToAsset (network, slug, entry) {
     ...(entry.nativeId !== undefined && { nativeId: entry.nativeId }),
     ...(entry.address !== undefined && { address: entry.address }),
     testnet: walletsFile.networks[network]?.testnet ?? false,
-    ...(entry.metadata !== undefined && { metadata: entry.metadata })
+    ...(entry.metadata !== undefined && { metadata: normalizeMetadata(entry.metadata) })
+  }
+}
+
+/** Pre-v3 metadata fields, mapped to the system key they moved to. */
+const LEGACY_SLUG_FIELDS = { indexerSlug: 'indexer', moonpaySlug: 'moonpay', bitfinexSlug: 'bitfinex' }
+
+/**
+ * Upgrades a stored custom token's metadata to the `slugs` block. Entries
+ * written before the block existed keep working without a config migration;
+ * a value already under `slugs` wins over its legacy field.
+ *
+ * @param {TokenMetadata} metadata - Metadata as stored in user config.
+ * @returns {TokenMetadata} Metadata with legacy fields folded into `slugs`.
+ */
+function normalizeMetadata (metadata) {
+  const legacy = Object.entries(LEGACY_SLUG_FIELDS)
+    .filter(([field]) => typeof metadata[field] === 'string')
+  if (legacy.length === 0) return metadata
+  const rest = Object.fromEntries(
+    Object.entries(metadata).filter(([key]) => key !== 'slugs' && !(key in LEGACY_SLUG_FIELDS))
+  )
+  return {
+    ...rest,
+    slugs: {
+      ...Object.fromEntries(legacy.map(([field, system]) => [system, metadata[field]])),
+      ...metadata.slugs
+    }
+  }
+}
+
+/**
+ * Applies the user's `overrides.tokens.<id>.metadata.slugs` deltas to an asset.
+ * Each system is merged individually, so adding a mapping for one provider
+ * leaves the packaged mappings for the others in place. These deltas are
+ * written with `wdk config set`, which does not validate them, so an entry
+ * carrying no slug is dropped rather than shadowing the packaged mapping.
+ *
+ * @param {CliTokenAsset} asset - The asset as the catalog or user config defines it.
+ * @returns {CliTokenAsset} The asset with any slug deltas applied.
+ */
+function withSlugOverrides (asset) {
+  const slugs = getOwn(getOverrides().tokens, asset.id)?.metadata?.slugs
+  if (!slugs || typeof slugs !== 'object') return asset
+  const usable = Object.fromEntries(
+    Object.entries(slugs).filter(([, entry]) => slugValue(entry) !== undefined)
+  )
+  if (Object.keys(usable).length === 0) return asset
+  return {
+    ...asset,
+    metadata: { ...asset.metadata, slugs: { ...asset.metadata?.slugs, ...usable } }
   }
 }
 
@@ -161,13 +212,15 @@ function getRegistry (includeDisabled = false) {
   }
 
   const keep = (id) => includeDisabled || !isDisabled('tokens', id)
-  const registry = new CliTokenAssetRegistry(tokensFile.assets.filter((a) => keep(a.id)))
+  const registry = new CliTokenAssetRegistry(
+    tokensFile.assets.filter((a) => keep(a.id)).map(withSlugOverrides)
+  )
   if (custom) {
     for (const [network, entries] of Object.entries(custom)) {
       for (const [slug, entry] of Object.entries(entries)) {
         if (!keep(`${network}/${slug}`)) continue
         try {
-          registry.registerAsset(customEntryToAsset(network, slug, entry), true)
+          registry.registerAsset(withSlugOverrides(customEntryToAsset(network, slug, entry)), true)
         } catch (error) {
           const issue = error.issues?.[0]
           const detail = issue ? `${issue.path.join('.') || 'entry'}: ${issue.message}` : error.message
@@ -246,52 +299,54 @@ export function getTokensForNetwork (network, options = {}) {
 }
 
 /**
- * Returns the indexer slug (`metadata.indexerSlug`) for the given token, or
- * undefined when the token isn't registered or has no indexer mapping.
+ * Returns the slug string from either slug form, or undefined when the entry
+ * is absent or malformed.
  *
- * @param {string} network
- * @param {string} token
- * @returns {string | undefined}
+ * @param {TokenSlug | undefined} entry - The stored mapping.
+ * @returns {string | undefined} The slug string.
  */
-export function getIndexerCode (network, token) {
-  return getTokenByName(network, token)?.metadata?.indexerSlug
+function slugValue (entry) {
+  if (typeof entry === 'string') return entry || undefined
+  if (entry && typeof entry === 'object' && typeof entry.slug === 'string') return entry.slug || undefined
+  return undefined
 }
 
 /**
- * Returns the MoonPay asset slug (`metadata.moonpaySlug`) for the given token,
- * or undefined when the token isn't registered or has no MoonPay mapping.
+ * Returns how an external system names a token: the plain slug, or the object
+ * form when that system takes extra fields alongside it.
  *
- * @param {string} network
- * @param {string} token
- * @returns {string | undefined}
+ * @param {string} network - The network name.
+ * @param {string} token - The token name.
+ * @param {string} system - The external system key (e.g. "indexer", "moonpay").
+ * @returns {TokenSlug | undefined} The mapping, or undefined when the token is
+ *   not registered or that system does not carry it.
  */
-export function getMoonpayCode (network, token) {
-  return getTokenByName(network, token)?.metadata?.moonpaySlug
+export function getTokenSlug (network, token, system) {
+  return getOwn(getTokenByName(network, token)?.metadata?.slugs, system)
 }
 
 /**
- * Returns the Bitfinex pair slug (`metadata.bitfinexSlug`) for the given token,
- * or undefined when the token isn't registered or has no Bitfinex mapping.
+ * Returns the slug string an external system uses for an already-resolved
+ * token entry, discarding the extra fields of the object form.
  *
- * @param {string} network
- * @param {string} token
- * @returns {string | undefined}
+ * @param {{ metadata?: TokenMetadata } | undefined} entry - The token entry.
+ * @param {string} system - The external system key (e.g. "indexer", "moonpay").
+ * @returns {string | undefined} The slug, or undefined when unmapped.
  */
-export function getBitfinexCode (network, token) {
-  return getTokenByName(network, token)?.metadata?.bitfinexSlug
+export function tokenSlugValue (entry, system) {
+  return slugValue(getOwn(entry?.metadata?.slugs, system))
 }
 
 /**
- * Returns the list of token names on a network that have a mapping for the
- * given provider in their `metadata` block.
+ * Returns the token names on a network that the given external system carries.
  *
- * @param {string} network
- * @param {'indexerSlug' | 'moonpaySlug' | 'bitfinexSlug'} provider
+ * @param {string} network - The network name.
+ * @param {string} system - The external system key (e.g. "indexer", "moonpay").
  * @returns {string[]} Token names (lowercase keys from the registry).
  */
-export function getTokensSupportedBy (network, provider) {
+export function getTokensSupportedBy (network, system) {
   return assetsForNetwork(network)
-    .filter((a) => a.metadata && typeof a.metadata[provider] === 'string')
+    .filter((a) => slugValue(getOwn(a.metadata?.slugs, system)) !== undefined)
     .map((a) => a.slug)
 }
 
