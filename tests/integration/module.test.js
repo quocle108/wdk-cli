@@ -17,8 +17,8 @@ import { statSync } from 'node:fs'
 import { Cli } from './helpers.js'
 
 const catalog = createRequire(import.meta.url)('../../wdk.config.json')
-const MOONPAY_MODULE = catalog.providers.moonpay.module
-const BITFINEX_MODULE = catalog.providers.bitfinex.module
+const MODULE_COUNT = Object.keys(catalog.modules).length
+const SPARK_METHOD_COUNT = Object.keys(catalog.modules[catalog.networks.spark.module].methods).length
 
 /** @type {Cli} */
 let cli
@@ -30,6 +30,7 @@ describe('module registry', () => {
   it('reports every catalog module as installed and ok', async () => {
     const { modules } = await cli.json(['module', 'list'])
 
+    expect(modules).toHaveLength(MODULE_COUNT)
     expect(modules.every((m) => m.status === 'ok')).toBe(true)
   })
 
@@ -117,6 +118,7 @@ describe('module methods', () => {
   it('marks each method read or write', async () => {
     const { methods } = await cli.json(['method', 'list', '--network', 'spark'])
 
+    expect(methods).toHaveLength(SPARK_METHOD_COUNT)
     expect(methods.every((m) => m.kind === 'read' || m.kind === 'write')).toBe(true)
   })
 

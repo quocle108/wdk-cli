@@ -13,12 +13,11 @@
 // limitations under the License.
 
 import { createRequire } from 'node:module'
-import { statSync } from 'node:fs'
 import { Cli } from './helpers.js'
 
 const catalog = createRequire(import.meta.url)('../../wdk.config.json')
 const MOONPAY_MODULE = catalog.providers.moonpay.module
-const BITFINEX_MODULE = catalog.providers.bitfinex.module
+const TESTNET_COUNT = Object.values(catalog.networks).filter((n) => n.testnet).length
 
 /** @type {Cli} */
 let cli
@@ -36,6 +35,7 @@ describe('network registry', () => {
   it('separates testnets behind a flag', async () => {
     const { networks } = await cli.json(['network', 'list', '--testnet'])
 
+    expect(networks).toHaveLength(TESTNET_COUNT)
     expect(networks.every((n) => n.testnet)).toBe(true)
   })
 

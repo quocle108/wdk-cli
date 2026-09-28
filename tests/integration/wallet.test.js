@@ -16,8 +16,6 @@ import { Cli } from './helpers.js'
 
 const SEED = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 const ETHEREUM_0 = '0x405005C7c4422390F4B334F64Cf20E0b767131d0'
-/** Mainnet networks in the packaged registry. */
-const MAINNET_COUNT = 15
 
 /** @type {Cli} */
 let cli
@@ -272,6 +270,7 @@ describe('more than one wallet', () => {
     await cli.run(['wallet', 'lock', '--all'], { unlocked: true })
     const { wallets } = await cli.json(['wallet', 'list'])
 
+    expect(wallets).toHaveLength(2)
     expect(wallets.every((w) => !w.unlocked)).toBe(true)
   })
 

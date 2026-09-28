@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url'
 
 const CLI_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const BIN = join(CLI_ROOT, 'bin', 'wdk.mjs')
+const DAEMON = join(CLI_ROOT, 'bin', 'wdk-daemon.mjs')
 
 /**
  * @typedef {Object} CliResult
@@ -29,10 +30,30 @@ const BIN = join(CLI_ROOT, 'bin', 'wdk.mjs')
  * @property {string} stderr - Everything written to stderr, ANSI stripped.
  * @property {string} output - stdout and stderr joined, for matching a message
  *   without caring which stream carried it.
+ * @property {NodeJS.Signals | null} signal - The signal that killed the process,
+ *   or `null` when it exited on its own.
  */
 
 /** Matches the ANSI colour codes chalk writes when stdout is a TTY. */
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+
+/**
+ * Reports whether a pid is still one of this harness's daemons. A pid file
+ * outlives the process it names and the system reuses pids, so a bare kill can
+ * reach an unrelated process.
+ *
+ * @param {number} pid - The pid read from the daemon pid file.
+ * @returns {boolean} True when that process is running the daemon script.
+ */
+function isOurDaemon (pid) {
+  try {
+    const command = execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' })
+    return command.includes(DAEMON)
+  } catch {
+    // No such process, or `ps` is unavailable: either way, do not signal it.
+    return false
+  }
+}
 
 /**
  * An isolated CLI installation: its own config directory, torn down by
@@ -69,6 +90,7 @@ export class Cli {
    * @param {string} [options.passphrase] - Use this passphrase instead of the
    *   instance one, for a wallet whose passphrase has been changed.
    * @returns {Promise<CliResult>} What the command printed and exited with.
+   * @throws {Error} When the CLI binary cannot be spawned.
    */
   run (args, options = {}) {
     return new Promise((resolve, reject) => {
@@ -89,10 +111,12 @@ export class Cli {
       child.stdout.on('data', (d) => { stdout += d })
       child.stderr.on('data', (d) => { stderr += d })
       child.on('error', reject)
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
         const clean = (s) => s.replace(ANSI, '')
         resolve({
-          code: code ?? 0,
+          // A signal kill reports a null code; 0 would read as success.
+          code: code ?? (signal ? 1 : 0),
+          signal,
           stdout: clean(stdout),
           stderr: clean(stderr),
           output: clean(stdout + stderr)
@@ -168,7 +192,7 @@ export class Cli {
   cleanup () {
     try {
       const pid = Number(readFileSync(join(this.configHome, 'wdk-cli', 'daemon.pid'), 'utf8').trim())
-      if (pid > 0) process.kill(pid, 'SIGTERM')
+      if (pid > 0 && isOurDaemon(pid)) process.kill(pid, 'SIGTERM')
     } catch {
       // No daemon was started, or it is already gone.
     }
