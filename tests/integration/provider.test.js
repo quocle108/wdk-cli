@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import { createRequire } from 'node:module'
-import { statSync } from 'node:fs'
 import { Cli } from './helpers.js'
 
 const catalog = createRequire(import.meta.url)('../../wdk.config.json')

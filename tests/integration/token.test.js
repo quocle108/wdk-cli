@@ -12,13 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { createRequire } from 'node:module'
-import { statSync } from 'node:fs'
 import { Cli } from './helpers.js'
-
-const catalog = createRequire(import.meta.url)('../../wdk.config.json')
-const MOONPAY_MODULE = catalog.providers.moonpay.module
-const BITFINEX_MODULE = catalog.providers.bitfinex.module
 
 /** @type {Cli} */
 let cli

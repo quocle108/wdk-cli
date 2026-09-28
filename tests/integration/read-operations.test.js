@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { createRequire } from 'node:module'
 import { Cli } from './helpers.js'
+
+const catalog = createRequire(import.meta.url)('../../wdk.config.json')
 
 const SEED = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 const ETHEREUM_0 = '0x405005C7c4422390F4B334F64Cf20E0b767131d0'
-/** Mainnet networks in the packaged registry. */
-const MAINNET_COUNT = 15
+const MAINNET_COUNT = Object.values(catalog.networks).filter((n) => !n.testnet).length
 
 // ECDSA over a fixed seed and message is deterministic, so this is an exact
 // value rather than a shape. If it ever changes, the derivation changed.
