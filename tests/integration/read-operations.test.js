@@ -165,8 +165,6 @@ describe('get address', () => {
     expect(result.addresses.map((a) => a.network)).toEqual(TESTNETS)
     expect(result.addresses.find((a) => a.network === 'bitcoin-testnet3').address)
       .toBe(BITCOIN_TESTNET_0)
-    // Sepolia is the same EVM key as mainnet ethereum, which is the point: the
-    // flag changes which networks are listed, not how they derive.
     expect(result.addresses.find((a) => a.network === 'sepolia').address).toBe(ETHEREUM_0)
   })
 
@@ -226,7 +224,7 @@ describe('get address', () => {
 })
 
 describe('deriving on a network whose module is disabled', () => {
-  it('drops the module\'s networks from --all and names the module by network', async () => {
+  it("drops the module's networks from --all and names the module by network", async () => {
     await importAndUnlock()
     await disableSpark()
     await cli.run(['module', 'disable', '--name', EVM_MODULE], { unlocked: true })
