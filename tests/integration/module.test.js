@@ -17,6 +17,8 @@ import { statSync } from 'node:fs'
 import { Cli } from './helpers.js'
 
 const catalog = createRequire(import.meta.url)('../../wdk.config.json')
+const MOONPAY_MODULE = catalog.providers.moonpay.module
+const BITFINEX_MODULE = catalog.providers.bitfinex.module
 const MODULE_COUNT = Object.keys(catalog.modules).length
 const SPARK_METHOD_COUNT = Object.keys(catalog.modules[catalog.networks.spark.module].methods).length
 
@@ -61,6 +63,32 @@ describe('module enable and disable', () => {
     const { modules } = await cli.json(['module', 'list'])
 
     expect(modules.find((m) => m.module === '@tetherto/wdk-protocol-fiat-moonpay').status).toBe('ok')
+  })
+})
+describe('adding and removing modules', () => {
+  // `module add` of a new package installs it from the registry, so the
+  // successful add path belongs in a suite allowed to reach the network. The
+  // refusals below are decided before any install runs.
+  it('refuses to add a package that already ships with the CLI', async () => {
+    const result = await cli.run(['module', 'add', '--name', BITFINEX_MODULE], { unlocked: true })
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain(`'${BITFINEX_MODULE}' is a built-in module.`)
+    expect(result.output).toContain('pass one explicitly')
+  })
+
+  it('refuses to remove a packaged module, which can only be disabled', async () => {
+    const result = await cli.run(['module', 'remove', '--name', MOONPAY_MODULE], { unlocked: true })
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain(`'${MOONPAY_MODULE}' is a built-in module and cannot be removed.`)
+  })
+
+  it('reports a remove for a module that was never added', async () => {
+    const result = await cli.run(['module', 'remove', '--name', '@nobody/never-added'], { unlocked: true })
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain("Module '@nobody/never-added' is not a custom module.")
   })
 })
 describe('config', () => {

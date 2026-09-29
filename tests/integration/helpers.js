@@ -24,6 +24,13 @@ const BIN = join(CLI_ROOT, 'bin', 'wdk.mjs')
 const DAEMON = join(CLI_ROOT, 'bin', 'wdk-daemon.mjs')
 
 /**
+ * How long a single command may take before the harness kills it. Every timeout
+ * inside the CLI is well under this, so exceeding it means the process wedged.
+ * Kept below jest's own timeout so the failure names the command that hung.
+ */
+const RUN_TIMEOUT_MS = 45_000
+
+/**
  * @typedef {Object} CliResult
  * @property {number} code - The process exit code.
  * @property {string} stdout - Everything written to stdout, ANSI stripped.
@@ -91,6 +98,7 @@ export class Cli {
    *   instance one, for a wallet whose passphrase has been changed.
    * @returns {Promise<CliResult>} What the command printed and exited with.
    * @throws {Error} When the CLI binary cannot be spawned.
+   * @throws {Error} When the command does not exit within the harness timeout.
    */
   run (args, options = {}) {
     return new Promise((resolve, reject) => {
@@ -106,12 +114,24 @@ export class Cli {
         stdio: ['pipe', 'pipe', 'pipe']
       })
 
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL')
+        reject(new Error(
+          `wdk ${args.join(' ')} did not exit within ${RUN_TIMEOUT_MS}ms\n` +
+          `stdout so far: ${stdout}\nstderr so far: ${stderr}`
+        ))
+      }, RUN_TIMEOUT_MS)
+
       let stdout = ''
       let stderr = ''
       child.stdout.on('data', (d) => { stdout += d })
       child.stderr.on('data', (d) => { stderr += d })
-      child.on('error', reject)
+      child.on('error', (error) => {
+        clearTimeout(timer)
+        reject(error)
+      })
       child.on('close', (code, signal) => {
+        clearTimeout(timer)
         const clean = (s) => s.replace(ANSI, '')
         resolve({
           // A signal kill reports a null code; 0 would read as success.
