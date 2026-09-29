@@ -66,6 +66,11 @@ function isOurDaemon (pid) {
  * An isolated CLI installation: its own config directory, torn down by
  * {@link Cli#cleanup}. A directory with no wallets means no passphrase prompt,
  * so every registry and config command runs unattended.
+ *
+ * The daemon socket lives inside that directory, so instances never share one
+ * and these suites run in parallel. Windows is the exception: the daemon uses a
+ * single fixed named pipe there, so workers would contend for it — run with
+ * `--runInBand` on Windows until the pipe is per-directory too.
  */
 export class Cli {
   /** The config directory this instance runs against. */
