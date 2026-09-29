@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Grouped by the command under test, so the surface each one covers is visible
-// at a glance and a new flag has an obvious home.
-
 import { Cli } from './helpers.js'
 
 const SEED = 'cook voyage document eight skate token alien guide drink uncle term abuse'
@@ -23,6 +20,10 @@ const ETHEREUM_0 = '0x405005C7c4422390F4B334F64Cf20E0b767131d0'
 /** A second valid BIP-39 phrase, for telling one wallet's keys from another's. */
 const OTHER_SEED = 'legal winner thank year wave sausage worth useful legal winner thank yellow'
 const OTHER_ETHEREUM_0 = '0x58A57ed9d8d624cBD12e2C467D34787555bB1b25'
+
+const EVM_MODULE = '@tetherto/wdk-wallet-evm'
+/** A module behind no network, so disabling it touches no wallet key. */
+const PRICING_MODULE = '@tetherto/wdk-pricing-bitfinex-http'
 
 /** The default session length, in milliseconds. */
 const DEFAULT_TTL_MS = 300_000
@@ -463,5 +464,81 @@ describe('wallet change-passphrase', () => {
 
     expect(result.code).toBe(1)
     expect(result.output).toContain("Wallet 'ghost' not found.")
+  })
+})
+
+describe('a session when a module is disabled', () => {
+  it('locks the open wallets when the module backs a network', async () => {
+    await importAndUnlock()
+
+    const disabled = await cli.json(['module', 'disable', '--name', EVM_MODULE], { unlocked: true })
+
+    expect(disabled.walletsLocked).toBe(true)
+    const { wallets } = await cli.json(['wallet', 'list'])
+    expect(wallets).toHaveLength(1)
+    expect(wallets[0].unlocked).toBe(false)
+  })
+
+  // applyToggle locks unconditionally, so even a price feed that has nothing to
+  // do with key derivation costs the user their session. Blunt, but safe: pinning
+  // it here means narrowing it later has to be a deliberate change.
+  it('locks them even when the module backs no network', async () => {
+    await importAndUnlock()
+
+    const disabled = await cli.json(['module', 'disable', '--name', PRICING_MODULE], { unlocked: true })
+
+    expect(disabled.walletsLocked).toBe(true)
+    const { wallets } = await cli.json(['wallet', 'list'])
+    expect(wallets).toHaveLength(1)
+    expect(wallets[0].unlocked).toBe(false)
+  })
+})
+
+describe('the passphrase gate on other commands', () => {
+  // The gate exists to protect the keys, so its behaviour is a wallet concern
+  // even though it guards registry commands. Each registry file covers that its
+  // own commands are gated; these are the cases about the passphrase itself.
+  it('does not ask when there is no wallet to protect', async () => {
+    const result = await cli.run(['provider', 'disable', '--name', 'velora'])
+
+    expect(result.code).toBe(0)
+    expect(result.output).toContain("Provider 'velora' disabled.")
+  })
+
+  it('rejects the wrong passphrase, changing nothing', async () => {
+    await cli.run(['wallet', 'import', '--name', 'main', '--seed-stdin'], {
+      unlocked: true,
+      stdin: SEED + '\n'
+    })
+
+    const result = await cli.run(['provider', 'disable', '--name', 'velora'], {
+      passphrase: 'not-the-passphrase'
+    })
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain('Incorrect passphrase.')
+    const { providers } = await cli.json(['provider', 'list'])
+    expect(providers.find((p) => p.name === 'velora').enabled).toBe(true)
+  })
+
+  it('follows the new passphrase after change-passphrase', async () => {
+    await cli.run(['wallet', 'import', '--name', 'main', '--seed-stdin'], {
+      unlocked: true,
+      stdin: SEED + '\n'
+    })
+    await cli.run(
+      ['wallet', 'change-passphrase', '--name', 'main', '--new-passphrase-stdin'],
+      { unlocked: true, stdin: 'second-passphrase\n' }
+    )
+
+    const withOld = await cli.run(['provider', 'disable', '--name', 'velora'], { unlocked: true })
+    expect(withOld.code).toBe(1)
+    expect(withOld.output).toContain('Incorrect passphrase.')
+
+    const withNew = await cli.run(['provider', 'disable', '--name', 'velora'], {
+      passphrase: 'second-passphrase'
+    })
+    expect(withNew.code).toBe(0)
+    expect(withNew.output).toContain("Provider 'velora' disabled.")
   })
 })

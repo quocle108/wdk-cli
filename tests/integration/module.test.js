@@ -18,9 +18,16 @@ import { Cli } from './helpers.js'
 
 const catalog = createRequire(import.meta.url)('../../wdk.config.json')
 const MOONPAY_MODULE = catalog.providers.moonpay.module
+const SEED = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 const BITFINEX_MODULE = catalog.providers.bitfinex.module
 const MODULE_COUNT = Object.keys(catalog.modules).length
 const SPARK_METHOD_COUNT = Object.keys(catalog.modules[catalog.networks.spark.module].methods).length
+
+/** A package that really is installed, for pinning against its own version. */
+const INSTALLED_PACKAGE = '@tetherto/wdk-utils'
+const INSTALLED_VERSION = createRequire(import.meta.url)(
+  `../../node_modules/${INSTALLED_PACKAGE}/package.json`
+).version
 
 /** @type {Cli} */
 let cli
@@ -28,7 +35,7 @@ let cli
 beforeEach(() => { cli = new Cli() })
 afterEach(() => cli.cleanup())
 
-describe('module registry', () => {
+describe('module list', () => {
   it('reports every catalog module as installed and ok', async () => {
     const { modules } = await cli.json(['module', 'list'])
 
@@ -43,95 +50,125 @@ describe('module registry', () => {
     expect(indexer.pinned).toContain('github:')
     expect(indexer.status).toBe('ok')
   })
-})
-describe('module enable and disable', () => {
-  it('reports a disabled module and hides its providers', async () => {
-    await cli.run(['module', 'disable', '--name', '@tetherto/wdk-protocol-fiat-moonpay'])
+
+  it('reports a custom module pinned to a version that is not installed', async () => {
+    cli.writeConfig({ customModules: { [INSTALLED_PACKAGE]: { version: '9.9.9' } } })
 
     const { modules } = await cli.json(['module', 'list'])
-    const { providers } = await cli.json(['provider', 'list'])
 
-    expect(modules.find((m) => m.module === '@tetherto/wdk-protocol-fiat-moonpay').status)
-      .toBe('disabled')
-    expect(providers.find((p) => p.name === 'moonpay')).toBeUndefined()
+    expect(modules.find((m) => m.module === INSTALLED_PACKAGE)).toMatchObject({
+      pinned: '9.9.9',
+      installed: INSTALLED_VERSION,
+      status: 'version mismatch',
+      source: 'custom'
+    })
   })
 
-  it('brings a disabled module back', async () => {
-    await cli.run(['module', 'disable', '--name', '@tetherto/wdk-protocol-fiat-moonpay'])
+  it('reports a custom module that was never installed', async () => {
+    cli.writeConfig({ customModules: { '@ghost/never-installed': { version: '1.0.0' } } })
 
-    await cli.run(['module', 'enable', '--name', '@tetherto/wdk-protocol-fiat-moonpay'])
     const { modules } = await cli.json(['module', 'list'])
 
-    expect(modules.find((m) => m.module === '@tetherto/wdk-protocol-fiat-moonpay').status).toBe('ok')
+    expect(modules.find((m) => m.module === '@ghost/never-installed')).toMatchObject({
+      pinned: '1.0.0',
+      installed: null,
+      status: 'not installed',
+      source: 'custom'
+    })
+  })
+
+  it('reports an override left behind by a module that is gone', async () => {
+    cli.writeConfig({ overrides: { modules: { '@ghost/gone': { enabled: false } } } })
+
+    const { modules } = await cli.json(['module', 'list'])
+
+    expect(modules.find((m) => m.module === '@ghost/gone')).toMatchObject({
+      pinned: '-',
+      status: 'stale override',
+      source: 'override'
+    })
   })
 })
-describe('adding and removing modules', () => {
-  // `module add` of a new package installs it from the registry, so the
-  // successful add path belongs in a suite allowed to reach the network. The
-  // refusals below are decided before any install runs.
-  it('refuses to add a package that already ships with the CLI', async () => {
+
+describe('module add', () => {
+  // Adding a new package installs it from the registry, so the successful path
+  // belongs in a suite allowed to reach the network. This refusal is decided
+  // before any install runs.
+  it('refuses a package that already ships with the CLI', async () => {
     const result = await cli.run(['module', 'add', '--name', BITFINEX_MODULE], { unlocked: true })
 
     expect(result.code).toBe(1)
     expect(result.output).toContain(`'${BITFINEX_MODULE}' is a built-in module.`)
     expect(result.output).toContain('pass one explicitly')
   })
+})
 
-  it('refuses to remove a packaged module, which can only be disabled', async () => {
+describe('module remove', () => {
+  it('refuses a packaged module, which can only be disabled', async () => {
     const result = await cli.run(['module', 'remove', '--name', MOONPAY_MODULE], { unlocked: true })
 
     expect(result.code).toBe(1)
     expect(result.output).toContain(`'${MOONPAY_MODULE}' is a built-in module and cannot be removed.`)
   })
 
-  it('reports a remove for a module that was never added', async () => {
-    const result = await cli.run(['module', 'remove', '--name', '@nobody/never-added'], { unlocked: true })
+  it('reports a module that was never added', async () => {
+    const result = await cli.run(
+      ['module', 'remove', '--name', '@nobody/never-added'], { unlocked: true }
+    )
 
     expect(result.code).toBe(1)
     expect(result.output).toContain("Module '@nobody/never-added' is not a custom module.")
   })
 })
-describe('config', () => {
-  it('reports where the config file lives', async () => {
-    const result = await cli.run(['config', 'path'])
 
-    expect(result.stdout.trim()).toBe(cli.configPath())
+describe('module disable', () => {
+  it('marks the module disabled and hides the providers it serves', async () => {
+    await cli.run(['module', 'disable', '--name', MOONPAY_MODULE])
+
+    const { modules } = await cli.json(['module', 'list'])
+    const { providers } = await cli.json(['provider', 'list'])
+
+    expect(modules.find((m) => m.module === MOONPAY_MODULE).status).toBe('disabled')
+    expect(providers.find((p) => p.name === 'moonpay')).toBeUndefined()
   })
 
-  it('round-trips a value through set and get', async () => {
-    await cli.run(['config', 'set', '--key', 'defaults.defaultIndex', '--value', '3'])
+  it('refuses one that is already disabled', async () => {
+    await cli.run(['module', 'disable', '--name', MOONPAY_MODULE])
 
-    const result = await cli.run(['config', 'get', '--key', 'defaults.defaultIndex'])
+    const again = await cli.run(['module', 'disable', '--name', MOONPAY_MODULE])
 
-    expect(result.stdout.trim()).toBe('3')
+    expect(again.code).toBe(1)
+    expect(again.output).toContain(`'${MOONPAY_MODULE}' is already disabled.`)
   })
 
-  it('reports a key that was never set, and still exits 0', async () => {
-    const result = await cli.run(['config', 'get', '--key', 'nope.missing'])
+  it.each([
+    ['ethereum', "'ethereum' is a network. Use: wdk network disable --name ethereum"],
+    ['velora', "'velora' is a provider. Use: wdk provider disable --name velora"],
+    ['@no/such', 'See package names with: wdk module list']
+  ])('points at the right registry for %p', async (name, hint) => {
+    const result = await cli.run(['module', 'disable', '--name', name], { unlocked: true })
 
-    expect(result.output).toContain("Key 'nope.missing' is not set.")
-    expect(result.code).toBe(0)
+    expect(result.code).toBe(1)
+    expect(result.output).toContain(`'${name}' is not a module.`)
+    expect(result.output).toContain(hint)
+  })
+})
+
+describe('module enable', () => {
+  it('brings a disabled module back', async () => {
+    await cli.run(['module', 'disable', '--name', MOONPAY_MODULE])
+
+    await cli.run(['module', 'enable', '--name', MOONPAY_MODULE])
+    const { modules } = await cli.json(['module', 'list'])
+
+    expect(modules.find((m) => m.module === MOONPAY_MODULE).status).toBe('ok')
   })
 
-  it('writes the value where the file can be read back', async () => {
-    await cli.run(['config', 'set', '--key', 'providers.bitfinex.config.apiKey', '--value', 'k'])
+  it('refuses one that is already enabled', async () => {
+    const result = await cli.run(['module', 'enable', '--name', MOONPAY_MODULE], { unlocked: true })
 
-    expect(cli.readConfig().providers.bitfinex.config.apiKey).toBe('k')
-  })
-
-  it('clears everything on reset', async () => {
-    await cli.run(['config', 'set', '--key', 'defaults.defaultIndex', '--value', '3'])
-
-    await cli.run(['config', 'reset', '--all'])
-    const result = await cli.run(['config', 'get', '--key', 'defaults.defaultIndex'])
-
-    expect(result.output).toContain("Key 'defaults.defaultIndex' is not set.")
-  })
-
-  it('keeps the config owner-only after a write', async () => {
-    await cli.run(['config', 'set', '--key', 'defaults.defaultIndex', '--value', '1'])
-
-    expect(statSync(cli.configPath()).mode & 0o077).toBe(0)
+    expect(result.code).toBe(1)
+    expect(result.output).toContain(`'${MOONPAY_MODULE}' is already enabled.`)
   })
 })
 
@@ -154,5 +191,29 @@ describe('module methods', () => {
     const result = await cli.json(['method', 'list', '--network', 'bitcoin'])
 
     expect(result).toEqual({ network: 'bitcoin', methods: [] })
+  })
+
+  it('reports a network that is not registered', async () => {
+    const result = await cli.run(['method', 'list', '--network', 'atlantis'])
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain("Network 'atlantis' is not supported.")
+  })
+})
+
+describe('the passphrase gate', () => {
+  it('stops a module change without the passphrase', async () => {
+    await cli.run(['wallet', 'import', '--name', 'main', '--seed-stdin'], {
+      unlocked: true,
+      stdin: SEED + '\n'
+    })
+
+    const result = await cli.run(['module', 'disable', '--name', MOONPAY_MODULE])
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain('Cannot prompt for a passphrase when stdin is piped.')
+
+    const { modules } = await cli.json(['module', 'list'])
+    expect(modules.find((m) => m.module === MOONPAY_MODULE).status).toBe('ok')
   })
 })
