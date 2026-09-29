@@ -210,9 +210,9 @@ function userObject (key) {
 }
 
 /**
- * Returns the networks that override something for a protocol: the packaged
- * network entries naming it, the entry's own `networks`, and the networks the
- * user configured under `providers.<name>.networks`.
+ * Returns the networks that override something for a protocol: the entry's own
+ * `networks`, and the networks the user configured under
+ * `providers.<name>.networks`.
  *
  * @param {string} name - The protocol short name.
  * @param {WdkProtocolEntry} entry - The registry entry.
@@ -221,9 +221,6 @@ function userObject (key) {
 export function getProviderNetworks (name, entry) {
   /** @type {Set<string>} */
   const names = new Set()
-  for (const [network, networkEntry] of Object.entries(walletsFile.networks)) {
-    if (hasOwn(networkEntry.providers, name)) names.add(network)
-  }
   for (const network of Object.keys(entry.networks || {})) names.add(network)
   for (const network of Object.keys(userObject(`providers.${name}.networks`))) names.add(network)
   return [...names]
@@ -238,7 +235,7 @@ export function getProviderNetworks (name, entry) {
  * Resolves a protocol's effective config, shallow-merging four layers with the
  * later ones winning: the packaged general `config`, the user's
  * `providers.<name>.config`, the packaged per-network override in
- * `networks.<network>.providers.<name>` (or a user-added entry's own
+ * the entry's own `networks.<network>` (or
  * `networks.<network>`, since it cannot edit the packaged network entries),
  * and the user's `providers.<name>.networks.<network>`. Without a network only
  * the two general layers apply.
@@ -262,8 +259,7 @@ export function resolveProtocolConfig (name, network, options = {}) {
   const config = { ...(entry.config || {}), ...userObject(`providers.${name}.config`) }
   if (network === undefined) return config
 
-  const packagedPerNetwork = getOwn(getOwn(walletsFile.networks, network)?.providers, name) ??
-    getOwn(entry.networks, network) ?? {}
+  const packagedPerNetwork = getOwn(entry.networks, network) ?? {}
   return { ...config, ...packagedPerNetwork, ...userObject(`providers.${name}.networks.${network}`) }
 }
 
@@ -360,7 +356,9 @@ export function saveCustomProvider (name, entry) {
 }
 
 /**
- * Removes a user-added provider entry from config.
+ * Removes a user-added provider: its registry entry, its stored config, and
+ * any enabled/disabled override. Packaged providers are rejected, so their
+ * config is never touched.
  *
  * @param {string} name - The protocol short name.
  * @returns {void}
@@ -388,6 +386,10 @@ export function removeCustomProvider (name) {
   delete next[name]
   if (Object.keys(next).length === 0) configService.delete('customProviders')
   else configService.set('customProviders', next)
+  // Its config too, general and per-network. Left behind, it would be merged
+  // into the next provider registered under the same name — handing one
+  // service's credentials to another.
+  configService.delete(`providers.${name}`)
   clearOverride('providers', name)
 }
 
