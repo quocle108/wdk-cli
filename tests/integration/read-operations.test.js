@@ -19,7 +19,14 @@ const catalog = createRequire(import.meta.url)('../../wdk.config.json')
 
 const SEED = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 const ETHEREUM_0 = '0x405005C7c4422390F4B334F64Cf20E0b767131d0'
-const MAINNET_COUNT = Object.values(catalog.networks).filter((n) => !n.testnet).length
+/**
+ * Mainnet networks in the packaged registry, minus spark. Spark derives through
+ * its operator API, so counting it would tie this to a remote service — and
+ * `get address --all` drops a network it cannot derive without saying so, which
+ * surfaces as an off-by-one rather than an error.
+ */
+const MAINNET_COUNT = Object.values(catalog.networks)
+  .filter((n) => !n.testnet && n.module !== '@tetherto/wdk-wallet-spark').length
 
 // ECDSA over a fixed seed and message is deterministic, so this is an exact
 // value rather than a shape. If it ever changes, the derivation changed.
@@ -76,11 +83,15 @@ describe('address derivation', () => {
 
   it('derives every mainnet address in one call', async () => {
     await importAndUnlock()
+    // Off, so the run stays local: see MAINNET_COUNT.
+    await cli.run(['network', 'disable', '--name', 'spark'], { unlocked: true })
+    await cli.run(['wallet', 'unlock', '--name', 'main'], { unlocked: true })
 
     const result = await cli.json(['get', 'address', '--all'], { unlocked: true })
 
     expect(result.type).toBe('mainnet')
     expect(result.addresses).toHaveLength(MAINNET_COUNT)
+    expect(result.addresses.some((a) => a.network === 'spark')).toBe(false)
     expect(result.addresses.find((a) => a.network === 'ethereum').address).toBe(ETHEREUM_0)
   })
 

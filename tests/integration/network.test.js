@@ -19,11 +19,42 @@ const catalog = createRequire(import.meta.url)('../../wdk.config.json')
 const MOONPAY_MODULE = catalog.providers.moonpay.module
 const TESTNET_COUNT = Object.values(catalog.networks).filter((n) => n.testnet).length
 
+const SEED = 'cook voyage document eight skate token alien guide drink uncle term abuse'
+/** The address this seed derives on any EVM network at index 0. */
+const ETHEREUM_0 = '0x405005C7c4422390F4B334F64Cf20E0b767131d0'
+const EVM_MODULE = '@tetherto/wdk-wallet-evm'
+const DAI = '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1'
+
+/** A custom EVM network with its native asset declared inline. */
+const SPEC = JSON.stringify({
+  network: 'optimism',
+  module: EVM_MODULE,
+  displayName: 'Optimism',
+  config: { provider: 'https://mainnet.optimism.io', chainId: 10 },
+  tokens: [{ token: 'eth', symbol: 'ETH', decimals: 18, isNative: true }]
+})
+
 /** @type {Cli} */
 let cli
 
 beforeEach(() => { cli = new Cli() })
-afterEach(() => cli.cleanup())
+afterEach(async () => {
+  await cli.run(['wallet', 'lock', '--all'], { unlocked: true })
+  cli.cleanup()
+})
+
+/**
+ * Imports the fixed test seed and unlocks it.
+ *
+ * @returns {Promise<void>}
+ */
+async function importAndUnlock () {
+  await cli.run(['wallet', 'import', '--name', 'main', '--seed-stdin'], {
+    unlocked: true,
+    stdin: SEED + '\n'
+  })
+  await cli.run(['wallet', 'unlock', '--name', 'main'], { unlocked: true })
+}
 
 describe('network registry', () => {
   it('lists the packaged networks', async () => {
@@ -105,5 +136,89 @@ describe('network info, enable and disable', () => {
     const again = await cli.run(['network', 'disable', '--name', 'polygon'])
 
     expect(again.code).toBe(1)
+  })
+})
+
+describe('a network the user creates', () => {
+  it('derives on the real module, not a registry stub', async () => {
+    await cli.json(['network', 'create', SPEC], { unlocked: true })
+    await importAndUnlock()
+
+    const derived = await cli.json(['get', 'address', '--network', 'optimism'], { unlocked: true })
+
+    // Same module and BIP-44 path as the packaged EVM networks, so the same
+    // seed must produce the same address. A registry entry alone could not.
+    expect(derived.address).toBe(ETHEREUM_0)
+    expect(derived.index).toBe(0)
+  })
+
+  it('registers the tokens declared in its spec', async () => {
+    await cli.json(['network', 'create', SPEC], { unlocked: true })
+
+    const { tokens } = await cli.json(['token', 'list', '--network', 'optimism'])
+
+    expect(Object.keys(tokens)).toEqual(['eth'])
+    expect(tokens.eth.symbol).toBe('ETH')
+    expect(tokens.eth.isNative).toBe(true)
+  })
+
+  it('accepts a token added after the fact', async () => {
+    await cli.json(['network', 'create', SPEC], { unlocked: true })
+
+    await cli.json(['token', 'add', JSON.stringify({
+      network: 'optimism', token: 'dai', symbol: 'DAI', decimals: 18, isNative: false, address: DAI
+    })], { unlocked: true })
+
+    const { tokens } = await cli.json(['token', 'list', '--network', 'optimism'])
+    expect(Object.keys(tokens)).toEqual(['eth', 'dai'])
+    expect(tokens.dai.address).toBe(DAI)
+  })
+
+  it('follows its module into and out of a disable', async () => {
+    await cli.json(['network', 'create', SPEC], { unlocked: true })
+
+    await cli.json(['module', 'disable', '--name', EVM_MODULE], { unlocked: true })
+    const hidden = await cli.json(['network', 'list'])
+    expect(hidden.networks.find((n) => n.name === 'optimism')).toBeUndefined()
+
+    await cli.json(['module', 'enable', '--name', EVM_MODULE], { unlocked: true })
+    const back = await cli.json(['network', 'list'])
+    expect(back.networks.find((n) => n.name === 'optimism').enabled).toBe(true)
+  })
+
+  // The spec is validated in full before anything is written, so this covers
+  // fail-fast validation. The rollback in the catch block — a token that passes
+  // validation but fails on save — is a separate path and is NOT covered here.
+  it('writes nothing when a token in the spec is rejected', async () => {
+    const bad = JSON.stringify({
+      network: 'optimism',
+      module: EVM_MODULE,
+      tokens: [
+        { token: 'eth', symbol: 'ETH', decimals: 18, isNative: true },
+        { token: 'bad', symbol: 'BAD', decimals: 6, isNative: false }
+      ]
+    })
+
+    const result = await cli.run(['network', 'create', bad], { unlocked: true })
+
+    expect(result.code).toBe(1)
+    expect(result.output).toContain('Non-native tokens require an "address".')
+
+    const { networks } = await cli.json(['network', 'list'])
+    expect(networks.find((n) => n.name === 'optimism')).toBeUndefined()
+  })
+
+  it('takes its custom tokens with it when deleted', async () => {
+    await cli.json(['network', 'create', SPEC], { unlocked: true })
+    await cli.json(['token', 'add', JSON.stringify({
+      network: 'optimism', token: 'dai', symbol: 'DAI', decimals: 18, isNative: false, address: DAI
+    })], { unlocked: true })
+
+    await cli.json(['network', 'delete', '--name', 'optimism'], { unlocked: true })
+    await cli.json(['network', 'create', SPEC], { unlocked: true })
+
+    // Recreated under the same name: only the spec's own token may come back.
+    const { tokens } = await cli.json(['token', 'list', '--network', 'optimism'])
+    expect(Object.keys(tokens)).toEqual(['eth'])
   })
 })
