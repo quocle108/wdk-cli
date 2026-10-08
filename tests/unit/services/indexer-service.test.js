@@ -112,7 +112,7 @@ describe('indexer endpoint configuration', () => {
         : undefined
     )
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-      /** @type {Response} */ ({ ok: true, json: async () => ({ transfers: [] }) })
+      new Response(JSON.stringify({ transfers: [] }), { status: 200 })
     )
 
     await getTokenTransfers('ethereum', 'usdt', ADDRESS)
@@ -146,12 +146,10 @@ describe('indexer endpoint configuration', () => {
           : undefined
     )
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-      /** @type {Response} */ ({
-        ok: false,
-        status: 403,
-        statusText: 'Forbidden',
-        json: async () => ({ error: 'Forbidden', message: 'Invalid API key', status: 403 })
-      })
+      new Response(
+        JSON.stringify({ error: 'Forbidden', message: 'Invalid API key', status: 403 }),
+        { status: 403, statusText: 'Forbidden' }
+      )
     )
 
     await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
@@ -171,12 +169,10 @@ describe('indexer endpoint configuration', () => {
         : undefined
     )
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-      /** @type {Response} */ ({
-        ok: false,
-        status: 403,
-        statusText: 'Forbidden',
-        json: async () => ({ error: 'Forbidden', message: 'Invalid API key', status: 403 })
-      })
+      new Response(
+        JSON.stringify({ error: 'Forbidden', message: 'Invalid API key', status: 403 }),
+        { status: 403, statusText: 'Forbidden' }
+      )
     )
 
     await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
@@ -194,16 +190,11 @@ describe('indexer endpoint configuration', () => {
         : undefined
     )
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-      /** @type {Response} */ ({
-        ok: false,
-        status: 503,
-        statusText: 'Service Unavailable',
-        json: async () => ({})
-      })
+      new Response('{}', { status: 503, statusText: 'Service Unavailable' })
     )
 
     await expect(getTokenTransfers('ethereum', 'usdt', ADDRESS)).rejects.toThrow(
-      'Indexer API error: HTTP 503: Service Unavailable'
+      'Indexer API error: HTTP 503 Service Unavailable'
     )
   })
 
@@ -233,7 +224,7 @@ describe('indexer endpoint configuration', () => {
         : undefined
     )
     const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-      /** @type {Response} */ ({ ok: true, json: async () => ({ transfers: [] }) })
+      new Response(JSON.stringify({ transfers: [] }), { status: 200 })
     )
 
     await getTokenTransfers('ethereum', 'usdt', ADDRESS)

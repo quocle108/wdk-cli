@@ -92,10 +92,7 @@ function apiError (error, name) {
     )
   }
   const message = error instanceof Error ? error.message : String(error)
-  // Matched by name: these are exported at runtime but absent from the .d.ts.
-  if (error instanceof Error && error.name === 'WdkIndexerValidationError') {
-    return new WdkCliError(message, ErrorCode.NETWORK_NOT_SUPPORTED)
-  }
+  // The base class alone means the client refused to send: a missing API key.
   if (error instanceof Error && error.name === 'WdkIndexerError') {
     return new WdkCliError(
       `Indexer is not configured: ${message}`,
@@ -107,15 +104,15 @@ function apiError (error, name) {
 }
 
 /** @typedef {import('@tetherto/wdk-indexer-http').TokenTransfer} TokenTransfer */
-/** @typedef {import('@tetherto/wdk-indexer-http').WdkIndexerConfig} IndexerConfig */
+/** @typedef {import('@tetherto/wdk-indexer-http').WdkIndexerClientConfig} IndexerConfig */
 /** @typedef {import('@tetherto/wdk-indexer-http').Blockchain} Blockchain */
 /** @typedef {import('@tetherto/wdk-indexer-http').Token} Token */
 
 /**
  * @typedef {Object} TokenTransferOptions
  * @property {number} [limit] - Maximum number of transfers to return.
- * @property {number} [fromTs] - Start timestamp filter (Unix seconds).
- * @property {number} [toTs] - End timestamp filter (Unix seconds).
+ * @property {number} [fromTs] - Start timestamp filter (Unix milliseconds).
+ * @property {number} [toTs] - End timestamp filter (Unix milliseconds).
  */
 
 /**
@@ -124,12 +121,12 @@ function apiError (error, name) {
  * @property {string} token - The token symbol to query.
  * @property {string} address - The wallet address to query.
  * @property {number} [limit] - Maximum number of transfers to return.
- * @property {number} [fromTs] - Start timestamp filter (Unix seconds).
- * @property {number} [toTs] - End timestamp filter (Unix seconds).
+ * @property {number} [fromTs] - Start timestamp filter (Unix milliseconds).
+ * @property {number} [toTs] - End timestamp filter (Unix milliseconds).
  */
 
 /**
- * @typedef {{ transfers: TokenTransfer[] } | { error: string, message: string, status: number }} BatchTransferResultItem
+ * @typedef {{ transfers: TokenTransfer[] } | { error: string, message?: string, status?: number }} BatchTransferResultItem
  */
 
 /** @type {Record<string, string>} */
@@ -254,7 +251,7 @@ export async function getTokenTransfersBatch (items) {
 
   try {
     return await client.getBatchTokenTransfers(
-      /** @type {import('@tetherto/wdk-indexer-http').BatchTokenTransfersRequest[]} */ (items)
+      /** @type {import('@tetherto/wdk-indexer-http').BatchTokenTransferRequest[]} */ (items)
     )
   } catch (error) {
     throw apiError(error, name)

@@ -16,25 +16,32 @@ import { jest } from '@jest/globals'
 import { WdkCliError, ErrorCode } from '../../../src/errors/index.js'
 
 const requireUnlocked = jest.fn()
+const getAddress = jest.fn()
 const assertIndexerAvailable = jest.fn()
+const getTokenTransfers = jest.fn()
 
 jest.unstable_mockModule('../../../src/daemon/client.js', () => ({
-  daemonClient: { requireUnlocked }
+  daemonClient: { requireUnlocked, getAddress }
 }))
 
 const indexerService = await import('../../../src/services/indexer-service.js')
 jest.unstable_mockModule('../../../src/services/indexer-service.js', () => ({
   ...indexerService,
-  assertIndexerAvailable
+  assertIndexerAvailable,
+  getTokenTransfers
 }))
 
 const { getHistory } = await import('../../../src/actions/history.js')
 
 const NO_INDEXER = new WdkCliError('No indexer is available.', ErrorCode.MISSING_CONFIG)
 
+const ADDRESS = '0x28C6c06298d514Db089934071355E5743bf21d60'
+
 beforeEach(() => {
   requireUnlocked.mockReset()
+  getAddress.mockReset().mockResolvedValue(ADDRESS)
   assertIndexerAvailable.mockReset()
+  getTokenTransfers.mockReset().mockResolvedValue([])
 })
 
 describe('getHistory', () => {
@@ -46,5 +53,21 @@ describe('getHistory', () => {
       'No indexer is available.'
     )
     expect(requireUnlocked).not.toHaveBeenCalled()
+  })
+
+  it('sends the date range to the indexer in milliseconds', async () => {
+    await getHistory({
+      network: 'ethereum',
+      index: 0,
+      token: 'usdt',
+      fromDate: '2026-01-01',
+      toDate: '2026-03-31'
+    })
+
+    expect(getTokenTransfers).toHaveBeenCalledWith('ethereum', 'usdt', ADDRESS, {
+      limit: 30,
+      fromTs: Date.UTC(2026, 0, 1),
+      toTs: Date.UTC(2026, 2, 31)
+    })
   })
 })
