@@ -92,7 +92,15 @@
     "symbiosis": {
       "kind": "swidge",
       "module": "@symbiosis-finance/wdk-protocol-swidge-symbiosis",
-      "config": { "partnerId": "wdk" }
+      "config": { "partnerId": "wdk" },
+      "networks": {
+        "ethereum": { "chain": 1 },
+        "polygon": { "chain": 137 },
+        "arbitrum": { "chain": 42161 },
+        "base": { "chain": 8453 },
+        "bsc": { "chain": 56 },
+        "avalanche": { "chain": 43114 }
+      }
     }
   },
   "networks": {
@@ -141,9 +149,6 @@
         "chainId": 1,
         "provider": "https://ethereum-rpc.publicnode.com",
         "transferMaxFee": 5000000000000000
-      },
-      "providers": {
-        "symbiosis": { "chain": 1 }
       }
     },
     "sepolia": {
@@ -167,9 +172,6 @@
         "chainId": 137,
         "provider": "https://polygon.drpc.org",
         "transferMaxFee": 5000000000000000
-      },
-      "providers": {
-        "symbiosis": { "chain": 137 }
       }
     },
     "arbitrum": {
@@ -181,9 +183,6 @@
         "chainId": 42161,
         "provider": "https://arb1.arbitrum.io/rpc",
         "transferMaxFee": 1000000000000000
-      },
-      "providers": {
-        "symbiosis": { "chain": 42161 }
       }
     },
     "base": {
@@ -194,9 +193,6 @@
         "chainId": 8453,
         "provider": "https://mainnet.base.org",
         "transferMaxFee": 1000000000000000
-      },
-      "providers": {
-        "symbiosis": { "chain": 8453 }
       }
     },
     "bsc": {
@@ -207,9 +203,6 @@
         "chainId": 56,
         "provider": "https://bsc-dataseed.binance.org",
         "transferMaxFee": 5000000000000000
-      },
-      "providers": {
-        "symbiosis": { "chain": 56 }
       }
     },
     "avalanche": {
@@ -220,9 +213,6 @@
         "chainId": 43114,
         "provider": "https://api.avax.network/ext/bc/C/rpc",
         "transferMaxFee": 5000000000000000
-      },
-      "providers": {
-        "symbiosis": { "chain": 43114 }
       }
     },
     "solana": {
