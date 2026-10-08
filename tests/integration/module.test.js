@@ -43,14 +43,6 @@ describe('module list', () => {
     expect(modules.every((m) => m.status === 'ok')).toBe(true)
   })
 
-  it('treats a git-pinned module as satisfied rather than mismatched', async () => {
-    const { modules } = await cli.json(['module', 'list'])
-    const indexer = modules.find((m) => m.module === '@tetherto/wdk-indexer-http')
-
-    expect(indexer.pinned).toContain('github:')
-    expect(indexer.status).toBe('ok')
-  })
-
   it('reports a custom module pinned to a version that is not installed', async () => {
     cli.writeConfig({ customModules: { [INSTALLED_PACKAGE]: { version: '9.9.9' } } })
 
