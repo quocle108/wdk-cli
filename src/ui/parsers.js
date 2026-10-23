@@ -15,6 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { InvalidArgumentError } from 'commander'
 import BigNumber from 'bignumber.js'
+import { MAX_SESSION_TTL_MINUTES } from '../config/constants.js'
 import { WdkCliError, ErrorCode } from '../errors/index.js'
 
 /**
@@ -41,6 +42,23 @@ export function nonNegativeInt (value) {
   const n = Number(value)
   if (!Number.isInteger(n) || n < 0) {
     throw new InvalidArgumentError('Must be a non-negative integer.')
+  }
+  return n
+}
+
+/**
+ * Commander argParser for an unlock session TTL in minutes, bounded by
+ * `MAX_SESSION_TTL_MINUTES`. 0 means the session never expires.
+ *
+ * @param {string} value - The raw CLI argument.
+ * @returns {number} The validated TTL in minutes.
+ */
+export function sessionTtlMinutes (value) {
+  const n = Number(value)
+  if (!Number.isInteger(n) || n < 0 || n > MAX_SESSION_TTL_MINUTES) {
+    throw new InvalidArgumentError(
+      `Must be a whole number of minutes from 0 to ${MAX_SESSION_TTL_MINUTES} (0 = unlimited).`
+    )
   }
   return n
 }
