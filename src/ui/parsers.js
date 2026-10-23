@@ -54,13 +54,14 @@ export function nonNegativeInt (value) {
  * @returns {number} The validated TTL in minutes.
  */
 export function sessionTtlMinutes (value) {
-  const n = Number(value)
-  if (!Number.isInteger(n) || n < 0 || n > MAX_SESSION_TTL_MINUTES) {
+  // Digits only, before any coercion: Number('') and Number(' ') are 0, which
+  // is the one value that means "never expires".
+  if (!/^\d+$/.test(value) || Number(value) > MAX_SESSION_TTL_MINUTES) {
     throw new InvalidArgumentError(
       `Must be a whole number of minutes from 0 to ${MAX_SESSION_TTL_MINUTES} (0 = unlimited).`
     )
   }
-  return n
+  return Number(value)
 }
 
 /**

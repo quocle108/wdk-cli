@@ -176,6 +176,8 @@ export class WalletDaemon {
    * @param {number} ttlMinutes - The session TTL in minutes (0 = no expiry).
    * @returns {void}
    * @throws {WdkCliError} WRONG_PASSPHRASE when the passphrase does not decrypt the seed.
+   * @throws {WdkCliError} INVALID_ARGUMENT when the wallet name is not a valid one.
+   * @throws {Error} When the wallet's seed file cannot be read or parsed.
    */
   #unlockWalletSync (name, passphrase, ttlMinutes) {
     const walletPath = getWalletPath(name)

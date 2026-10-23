@@ -24,7 +24,7 @@ const SOCKET_PATH = join(tempDir, 'daemon.sock')
 const PID_PATH = join(tempDir, 'daemon.pid')
 
 const PASSPHRASE = 'correct-horse-battery-staple'
-const SEED = 'test test test test test test test test test test test junk'
+const SEED = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 
 /**
  * Writes a real encrypted seed file, so the daemon's own `deriveKey` and
@@ -166,7 +166,24 @@ describe('the daemon IPC endpoint', () => {
 
     const reply = await send({ action: 'unlock_wallet', wallet: 'cold', passphrase: PASSPHRASE, ttl: 1 })
 
-    expect(reply.ok).toBe(true)
+    expect(reply).toEqual({
+      ok: true,
+      data: { message: "Wallet 'cold' unlocked", wallet: 'cold' }
+    })
+  })
+
+  // A ttl past setTimeout's 32-bit range fires after 1ms, locking the wallet
+  // at once. Raising MAX_SESSION_TTL_MINUTES beyond that must fail here.
+  it('keeps a session open at the longest ttl it accepts', async () => {
+    writeWallet('max')
+    await send({
+      action: 'unlock_wallet', wallet: 'max', passphrase: PASSPHRASE, ttl: MAX_SESSION_TTL_MINUTES
+    })
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const { wallets } = (await send({ action: 'status' })).data
+
+    expect(wallets.find((w) => w.name === 'max').ttlMs).toBe(MAX_SESSION_TTL_MINUTES * 60_000)
   })
 
   it('refuses the wrong passphrase on a locked wallet', async () => {
