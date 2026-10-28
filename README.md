@@ -685,9 +685,8 @@ wdk get balance --network ethereum --json | jq '.balance'
 
 The daemon's trust boundary is the user account. The socket and the config
 directory are mode 0700, so another user cannot reach the daemon — but any
-process running as you can, the same way it can use `ssh-agent`. While a wallet
-is unlocked, such a process can sign and send with it without knowing the
-passphrase. This is by design.
+process running as you can. While a wallet is unlocked, such a process can sign
+and send with it without knowing the passphrase. This is by design.
 
 Everything local is inside that boundary, so a check made against a file on disk
 can be forged by anyone able to rewrite that file. The passphrase prompts on
