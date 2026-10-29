@@ -694,8 +694,12 @@ commands that change configuration confirm intent; they do not authorize.
 
 The daemon grants use of a key, never the key: no action returns seed material,
 and `wdk wallet export` requires the passphrase even while the wallet is
-unlocked. An allowance granted through `call_method approve`, and any signature
-from `sign_message`, outlive a lock and must be revoked separately.
+unlocked.
+
+Some effects outlive a lock. A token allowance stays on-chain until it is used
+up or revoked (approve 0), whether it came from `call_method approve` or a swap
+or bridge's approval step. A signature from `sign_message` stays valid even
+after the wallet is locked or deleted; the wallet can't revoke it.
 
 ### Data flow
 
