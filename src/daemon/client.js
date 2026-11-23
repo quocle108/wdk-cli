@@ -15,7 +15,7 @@
 import { connect } from 'node:net'
 import { readFile, access, unlink } from 'node:fs/promises'
 import bareSpawn from 'bare-runtime/spawn'
-import { getDaemonSocketPath, getDaemonPidPath } from '../config/paths.js'
+import { getDaemonSocketPath, getDaemonPidPath, getDaemonProtocolPath } from '../config/paths.js'
 import {
   DAEMON_START_TIMEOUT_MS,
   DAEMON_START_POLL_INTERVAL_MS,
@@ -30,6 +30,9 @@ import { configService } from '../services/config-service.js'
 import { KeyService } from '../services/key-service.js'
 import { WalletKeyring } from '../security/keyring.js'
 import { writeBareLaunchFiles } from './bare/imports.js'
+import HRPC from './rpc/spec/hrpc/index.js'
+import { getActionContract, toWireRequest, fromWireResponse } from './rpc/wire.js'
+import { PROTOCOL_VERSION } from './rpc/protocol-version.js'
 
 /** @typedef {import('node:child_process').ChildProcess} ChildProcess */
 /** @typedef {import('./protocol.js').DaemonRequest} DaemonRequest */
@@ -178,56 +181,126 @@ export class DaemonClient {
   }
 
   /**
-   * Sends a request to the daemon over the Unix socket and returns the response.
+   * Sends a request to the daemon and returns its response. A daemon left
+   * running by an earlier CLI version that speaks another protocol is stopped
+   * first, which locks its wallets; an unlock then goes to a fresh daemon.
    *
    * @param {DaemonRequest} req - The request payload.
    * @param {number} [timeoutMs] - Request timeout in milliseconds.
    * @returns {Promise<DaemonResponse>} The daemon response.
+   * @throws {WdkCliError} WALLET_LOCKED when no daemon is running, or when an outdated daemon was stopped.
+   * @throws {WdkCliError} NETWORK_ERROR when the daemon closes the connection without answering.
+   * @throws {Error} When the daemon cannot be reached or does not answer in time.
    */
   async request (req, timeoutMs = IPC_CONTROL_TIMEOUT_MS) {
     if (!(await this.isRunning())) {
       throw new WdkCliError('Wallet is locked.', ErrorCode.WALLET_LOCKED)
     }
 
-    return new Promise((resolve, reject) => {
-      const socket = connect(this.socketPath)
-      let buffer = ''
+    if (!(await this.#speaksCurrentProtocol())) {
+      await this.#stopDaemon()
+      if (req.action !== 'unlock_wallet') {
+        throw new WdkCliError(
+          'Wallet is locked: the wallet daemon was restarted for this CLI version.',
+          ErrorCode.WALLET_LOCKED,
+          'Unlock it again with: wdk wallet unlock --name <name>'
+        )
+      }
+      await this.ensureRunning()
+    }
 
-      socket.on('connect', () => {
-        socket.write(JSON.stringify(req) + '\n')
-      })
+    return this.#call(req, timeoutMs)
+  }
 
-      socket.on('data', (chunk) => {
-        buffer += chunk.toString()
-        const newlineIdx = buffer.indexOf('\n')
-        if (newlineIdx !== -1) {
-          const line = buffer.slice(0, newlineIdx)
-          try {
-            resolve(JSON.parse(line))
-          } catch {
-            reject(new Error('Invalid response from daemon'))
-          }
-          socket.end()
-        }
-      })
+  /**
+   * Whether the running daemon speaks this CLI's protocol, as recorded in its
+   * protocol file. A daemon from before the HRPC contract writes none.
+   *
+   * @returns {Promise<boolean>} True if the daemon speaks `PROTOCOL_VERSION`.
+   */
+  async #speaksCurrentProtocol () {
+    try {
+      return parseInt(await readFile(getDaemonProtocolPath(), 'utf8'), 10) === PROTOCOL_VERSION
+    } catch {
+      return false
+    }
+  }
 
-      socket.on('error', (err) => {
-        reject(new Error(`Cannot connect to wallet daemon: ${err.message}`))
-      })
+  /**
+   * Stops the running daemon and waits until it is gone.
+   *
+   * @returns {Promise<void>}
+   * @throws {WdkCliError} UNEXPECTED_ERROR when the daemon is still running after `DAEMON_START_TIMEOUT_MS`.
+   */
+  async #stopDaemon () {
+    const pid = parseInt(await readFile(getDaemonPidPath(), 'utf8'), 10)
+    try {
+      process.kill(pid, 'SIGTERM')
+    } catch {
+      /* already gone */
+    }
+    const deadline = Date.now() + DAEMON_START_TIMEOUT_MS
+    while (await this.isRunning()) {
+      if (Date.now() >= deadline) {
+        throw new WdkCliError(
+          `The wallet daemon (pid ${pid}) from another CLI version did not stop.`,
+          ErrorCode.UNEXPECTED_ERROR,
+          `Stop it with: kill ${pid}`
+        )
+      }
+      await new Promise((resolve) => setTimeout(resolve, DAEMON_START_POLL_INTERVAL_MS))
+    }
+  }
 
-      socket.on('close', () => {
-        reject(new WdkCliError(
+  /**
+   * Opens a connection, checks the daemon's protocol, sends one request and
+   * closes the connection.
+   *
+   * @param {DaemonRequest} req - The request payload.
+   * @param {number} timeoutMs - Request timeout in milliseconds.
+   * @returns {Promise<DaemonResponse>} The daemon response.
+   */
+  async #call (req, timeoutMs) {
+    const { method } = getActionContract(req.action)
+    const socket = connect(this.socketPath)
+    const rpc = new HRPC(socket)
+
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let timer
+    const timedOut = new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('Daemon request timed out')), timeoutMs)
+    })
+    const connectFailed = new Promise((resolve, reject) => {
+      socket.once('error', (err) => reject(new Error(`Cannot connect to wallet daemon: ${err.message}`)))
+    })
+
+    const exchange = async () => {
+      const { protocolVersion } = await rpc.handshake({ protocolVersion: PROTOCOL_VERSION })
+      if (protocolVersion !== PROTOCOL_VERSION) {
+        throw new WdkCliError(
+          `The wallet daemon speaks protocol ${protocolVersion}, this CLI speaks ${PROTOCOL_VERSION}.`,
+          ErrorCode.UNEXPECTED_ERROR,
+          'Lock every wallet with: wdk wallet lock --all, then run the command again.'
+        )
+      }
+      return fromWireResponse(req.action, await rpc[method](toWireRequest(req)))
+    }
+
+    try {
+      return await Promise.race([exchange(), timedOut, connectFailed])
+    } catch (err) {
+      if (err?.code === 'CHANNEL_CLOSED') {
+        throw new WdkCliError(
           'Lost connection to the wallet daemon.',
           ErrorCode.NETWORK_ERROR,
           'The daemon stopped and wallet sessions were lost. Run: wdk wallet unlock --name <name>'
-        ))
-      })
-
-      socket.setTimeout(timeoutMs, () => {
-        socket.destroy()
-        reject(new Error('Daemon request timed out'))
-      })
-    })
+        )
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
+      socket.destroy()
+    }
   }
 
   /**

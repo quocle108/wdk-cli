@@ -14,7 +14,7 @@
 
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { CONFIG_DIR, DAEMON_SOCKET, DAEMON_PID, validateWalletName } from './constants.js'
+import { CONFIG_DIR, DAEMON_SOCKET, DAEMON_PID, DAEMON_PROTOCOL, validateWalletName } from './constants.js'
 
 const WALLETS_DIR = 'wallets'
 
@@ -48,6 +48,16 @@ export function getDaemonSocketPath () {
  */
 export function getDaemonPidPath () {
   return join(getConfigDir(), DAEMON_PID)
+}
+
+/**
+ * Returns the path to the file in which a running daemon records the HRPC
+ * protocol version it speaks.
+ *
+ * @returns {string} Absolute path to the daemon protocol file.
+ */
+export function getDaemonProtocolPath () {
+  return join(getConfigDir(), DAEMON_PROTOCOL)
 }
 
 /**

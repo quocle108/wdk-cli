@@ -16,9 +16,11 @@ import '../services/install-node-host.js'
 import { createServer } from 'node:net'
 import { readFile, writeFile, unlink, chmod, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { getDaemonSocketPath, getDaemonPidPath, getWalletPath } from '../config/paths.js'
-import { DAEMON_MAX_REQUEST_BYTES } from '../config/constants.js'
+import { getDaemonSocketPath, getDaemonPidPath, getDaemonProtocolPath, getWalletPath } from '../config/paths.js'
+import { APP_VERSION, DAEMON_MAX_REQUEST_BYTES } from '../config/constants.js'
 import { WalletDaemonCore } from './core/wallet-daemon-core.js'
+import { serve } from './rpc/serve.js'
+import { PROTOCOL_VERSION } from './rpc/protocol-version.js'
 
 /** @typedef {import('node:net').Server} Server */
 /** @typedef {import('node:net').Socket} Socket */
@@ -41,7 +43,7 @@ export class WalletDaemon {
 
   /**
    * Starts the daemon: creates the IPC endpoint (Unix domain socket on
-   * macOS/Linux, named pipe on Windows), writes the PID file, and begins
+   * macOS/Linux, named pipe on Windows), writes the protocol and PID files, and begins
    * accepting connections. Access is restricted to the current user on all
    * runtimes: on Node the socket is created under umask 0o077, so it is
    * owner-only from the instant it exists; Bare has no umask, so there it is
@@ -60,6 +62,14 @@ export class WalletDaemon {
       } catch {
         /* socket may not exist */
       }
+    }
+
+    // Written before listening, so a client that finds this daemon running
+    // always finds the protocol it speaks.
+    const protocolPath = getDaemonProtocolPath()
+    await writeFile(protocolPath, String(PROTOCOL_VERSION), 'utf8')
+    if (!isWin) {
+      await chmod(protocolPath, 0o600)
     }
 
     this.#server = createServer((socket) => this.#handleConnection(socket))
@@ -87,39 +97,20 @@ export class WalletDaemon {
   }
 
   /**
-   * Handles a new incoming socket connection, reading newline-delimited JSON requests.
+   * Serves the HRPC contract on a new connection. A connection that sends more
+   * than `DAEMON_MAX_REQUEST_BYTES` is dropped: the CLI and the MCP server send
+   * one handshake and one request per connection, far below the limit.
    *
    * @param {Socket} socket - The connected socket.
    * @returns {void}
    */
   #handleConnection (socket) {
-    let buffer = ''
+    let received = 0
     socket.on('data', (chunk) => {
-      buffer += chunk.toString()
-      if (buffer.length > DAEMON_MAX_REQUEST_BYTES) {
-        socket.write(JSON.stringify({ ok: false, error: 'Message too large' }) + '\n')
-        socket.destroy()
-        return
-      }
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const request = JSON.parse(line)
-          this.#core.handleRequest(request)
-            .then((response) => {
-              socket.write(JSON.stringify(response) + '\n')
-            })
-            .catch(() => {
-              socket.write(JSON.stringify({ ok: false, error: 'Internal error' }) + '\n')
-            })
-        } catch {
-          socket.write(JSON.stringify({ ok: false, error: 'Invalid request' }) + '\n')
-        }
-      }
+      received += chunk.length
+      if (received > DAEMON_MAX_REQUEST_BYTES) socket.destroy()
     })
+    serve(this.#core, socket, { daemonVersion: APP_VERSION })
   }
 
   /**
@@ -159,6 +150,11 @@ export class WalletDaemon {
     }
     try {
       await unlink(getDaemonPidPath())
+    } catch {
+      /* */
+    }
+    try {
+      await unlink(getDaemonProtocolPath())
     } catch {
       /* */
     }

@@ -56,7 +56,8 @@
       "tests/**",
       "src/daemon/bare/main.template.mjs",
       "src/config/bundled-json.js",
-      "scripts/bare-core-smoke.mjs"
+      "scripts/bare-core-smoke.mjs",
+      "src/daemon/rpc/spec/**"
     ]
   },
   "engines": {
@@ -92,6 +93,8 @@
     "cli-table3": "0.6.5",
     "commander": "14.0.3",
     "conf": "15.1.0",
+    "hrpc": "4.3.2",
+    "hyperschema": "1.26.2",
     "ora": "9.3.0",
     "zod": "4.6.6"
   },

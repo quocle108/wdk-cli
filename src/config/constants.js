@@ -38,6 +38,7 @@ export const SESSION_TTL_MINUTES = 5
 export const MAX_SESSION_TTL_MINUTES = 7 * 24 * 60
 export const DAEMON_SOCKET = 'daemon.sock'
 export const DAEMON_PID = 'daemon.pid'
+export const DAEMON_PROTOCOL = 'daemon.protocol'
 export const DAEMON_MAX_REQUEST_BYTES = 64 * 1024
 /** How long the client waits for a freshly spawned daemon to answer; a cold first start loads the whole WDK stack. */
 export const DAEMON_START_TIMEOUT_MS = 15000

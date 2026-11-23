@@ -1,0 +1,239 @@
+{
+  "version": 1,
+  "schema": [
+    {
+      "id": 0,
+      "name": "@wdk-daemon/handshake",
+      "request": {
+        "name": "@wdk-daemon/handshake-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/handshake-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 1,
+      "name": "@wdk-daemon/unlock-wallet",
+      "request": {
+        "name": "@wdk-daemon/unlock-wallet-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/wallet-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 2,
+      "name": "@wdk-daemon/lock-wallet",
+      "request": {
+        "name": "@wdk-daemon/lock-wallet-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/wallet-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 3,
+      "name": "@wdk-daemon/get-address",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/address-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 4,
+      "name": "@wdk-daemon/call-method",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/call-method-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 5,
+      "name": "@wdk-daemon/get-balance",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/balance-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 6,
+      "name": "@wdk-daemon/estimate-fee",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/fee-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 7,
+      "name": "@wdk-daemon/send",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/send-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 8,
+      "name": "@wdk-daemon/sign-message",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/sign-message-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 9,
+      "name": "@wdk-daemon/verify-message",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/verify-message-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 10,
+      "name": "@wdk-daemon/get-transaction",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/transaction-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 11,
+      "name": "@wdk-daemon/quote-swap",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/quote-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 12,
+      "name": "@wdk-daemon/quote-bridge",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/quote-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 13,
+      "name": "@wdk-daemon/execute-swap",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/execute-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 14,
+      "name": "@wdk-daemon/execute-bridge",
+      "request": {
+        "name": "@wdk-daemon/account-request",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/execute-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 15,
+      "name": "@wdk-daemon/list-wallets",
+      "request": {
+        "name": "@wdk-daemon/empty",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/wallets-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 16,
+      "name": "@wdk-daemon/status",
+      "request": {
+        "name": "@wdk-daemon/empty",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/status-response",
+        "stream": false
+      },
+      "version": 1
+    },
+    {
+      "id": 17,
+      "name": "@wdk-daemon/lock",
+      "request": {
+        "name": "@wdk-daemon/empty",
+        "stream": false
+      },
+      "response": {
+        "name": "@wdk-daemon/message-response",
+        "stream": false
+      },
+      "version": 1
+    }
+  ]
+}

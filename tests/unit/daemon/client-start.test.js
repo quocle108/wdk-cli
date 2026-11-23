@@ -23,6 +23,7 @@ import { join } from 'node:path'
 const tempDir = mkdtempSync(join(tmpdir(), 'wdk-start-test-'))
 const SOCKET_PATH = join(tempDir, 'daemon.sock')
 const PID_PATH = join(tempDir, 'daemon.pid')
+const PROTOCOL_PATH = join(tempDir, 'daemon.protocol')
 const START_TIMEOUT_MS = 300
 
 const spawnMock = jest.fn()
@@ -36,6 +37,7 @@ jest.unstable_mockModule('../../../src/daemon/bare/imports.js', () => ({
 jest.unstable_mockModule('../../../src/config/paths.js', () => ({
   getDaemonSocketPath: () => SOCKET_PATH,
   getDaemonPidPath: () => PID_PATH,
+  getDaemonProtocolPath: () => PROTOCOL_PATH,
   getConfigDir: () => tempDir
 }))
 
@@ -62,6 +64,8 @@ jest.unstable_mockModule('../../../src/security/keyring.js', () => ({
 }))
 
 const { DaemonClient } = await import('../../../src/daemon/client.js')
+const { serve } = await import('../../../src/daemon/rpc/serve.js')
+const { PROTOCOL_VERSION } = await import('../../../src/daemon/rpc/protocol-version.js')
 
 const STATUS = { unlocked: false, wallets: [], pid: process.pid }
 
@@ -87,9 +91,9 @@ function fakeChild () {
  * @returns {Promise<void>}
  */
 async function startFakeDaemon () {
-  daemon = createServer((socket) => {
-    socket.on('data', () => socket.end(JSON.stringify({ ok: true, data: STATUS }) + '\n'))
-  })
+  const core = { handleRequest: async () => ({ ok: true, data: STATUS }) }
+  daemon = createServer((socket) => serve(core, socket, { daemonVersion: '9.9.9' }))
+  writeFileSync(PROTOCOL_PATH, String(PROTOCOL_VERSION))
   await new Promise((resolve) => daemon.listen(SOCKET_PATH, () => resolve(undefined)))
   writeFileSync(PID_PATH, String(process.pid))
 }
@@ -101,6 +105,7 @@ afterEach(async () => {
     daemon = null
   }
   rmSync(PID_PATH, { force: true })
+  rmSync(PROTOCOL_PATH, { force: true })
 })
 
 afterAll(() => {

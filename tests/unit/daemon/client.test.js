@@ -14,23 +14,26 @@
 
 import { jest } from '@jest/globals'
 import { createServer } from 'node:net'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const tempDir = mkdtempSync(join(tmpdir(), 'wdk-client-test-'))
 const DUMMY_SOCKET_PATH = join(tempDir, 'daemon.sock')
 const DUMMY_PID_PATH = join(tempDir, 'daemon.pid')
+const DUMMY_PROTOCOL_PATH = join(tempDir, 'daemon.protocol')
 
 jest.unstable_mockModule('../../../src/config/paths.js', () => ({
   getDaemonSocketPath: () => DUMMY_SOCKET_PATH,
   getDaemonPidPath: () => DUMMY_PID_PATH,
+  getDaemonProtocolPath: () => DUMMY_PROTOCOL_PATH,
   getConfigDir: () => tempDir
 }))
 
 jest.unstable_mockModule('../../../src/config/constants.js', () => ({
-  DAEMON_START_TIMEOUT_MS: 100,
-  DAEMON_START_POLL_INTERVAL_MS: 1,
+  DAEMON_START_TIMEOUT_MS: 2000,
+  DAEMON_START_POLL_INTERVAL_MS: 10,
   IPC_CONTROL_TIMEOUT_MS: 5000,
   IPC_READ_TIMEOUT_MS: 30000,
   IPC_WRITE_TIMEOUT_MS: 60000,
@@ -51,14 +54,33 @@ jest.unstable_mockModule('../../../src/security/keyring.js', () => ({
 }))
 
 const { DaemonClient } = await import('../../../src/daemon/client.js')
+const { serve } = await import('../../../src/daemon/rpc/serve.js')
+const { default: HRPC } = await import('../../../src/daemon/rpc/spec/hrpc/index.js')
+const { PROTOCOL_VERSION } = await import('../../../src/daemon/rpc/protocol-version.js')
 
 /** @type {(socket: import('node:net').Socket) => void} */
 let onConnection = () => {}
 const server = createServer((socket) => onConnection(socket))
 
+/**
+ * Serves the real HRPC contract over a core that answers every request with `response`.
+ *
+ * @param {Record<string, unknown>} response - The response the core returns.
+ * @returns {jest.Mock} The core's request handler.
+ */
+function daemonAnswering (response) {
+  const handleRequest = jest.fn(async () => response)
+  onConnection = (socket) => serve({ handleRequest }, socket, { daemonVersion: '9.9.9' })
+  return handleRequest
+}
+
 beforeAll(async () => {
-  writeFileSync(DUMMY_PID_PATH, String(process.pid))
   await new Promise((resolve) => server.listen(DUMMY_SOCKET_PATH, () => resolve(undefined)))
+})
+
+beforeEach(() => {
+  writeFileSync(DUMMY_PID_PATH, String(process.pid))
+  writeFileSync(DUMMY_PROTOCOL_PATH, String(PROTOCOL_VERSION))
 })
 
 afterAll(async () => {
@@ -78,14 +100,54 @@ describe('DaemonClient request', () => {
     )
   })
 
-  it('resolves normally when the daemon responds before closing', async () => {
-    onConnection = (socket) => {
-      socket.on('data', () => socket.end(JSON.stringify({ ok: true, data: {} }) + '\n'))
-    }
+  it('returns the daemon response, rebuilt from the contract', async () => {
+    const handleRequest = daemonAnswering({ ok: true, data: { unlocked: false, wallets: [], pid: 42 } })
     const client = new DaemonClient()
 
     const response = await client.request({ action: 'status' })
 
-    expect(response).toEqual({ ok: true, data: {} })
+    expect(response).toEqual({ ok: true, data: { unlocked: false, wallets: [], pid: 42 } })
+    expect(handleRequest).toHaveBeenCalledWith({ action: 'status' })
+  })
+
+  it('carries the daemon error code and suggestion', async () => {
+    daemonAnswering({ ok: false, error: "Wallet 'main' is not unlocked.", code: 'WALLET_NOT_UNLOCKED', suggestion: 'Run: wdk wallet unlock --name main' })
+    const client = new DaemonClient()
+
+    await expect(client.getAddress('ethereum', 0, 'main')).rejects.toMatchObject({
+      message: "Wallet 'main' is not unlocked.",
+      code: 'WALLET_NOT_UNLOCKED',
+      suggestion: 'Run: wdk wallet unlock --name main'
+    })
+  })
+
+  it('refuses a daemon whose handshake reports another protocol', async () => {
+    onConnection = (socket) => {
+      const rpc = new HRPC(socket)
+      rpc.onHandshake(async () => ({ protocolVersion: PROTOCOL_VERSION + 1, daemonVersion: '9.9.9' }))
+    }
+    const client = new DaemonClient()
+
+    await expect(client.request({ action: 'status' })).rejects.toThrow(
+      `The wallet daemon speaks protocol ${PROTOCOL_VERSION + 1}, this CLI speaks ${PROTOCOL_VERSION}.`
+    )
+  })
+})
+
+describe('DaemonClient with a daemon from another CLI version', () => {
+  it('stops the daemon and reports its wallets as locked', async () => {
+    const old = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'])
+    await new Promise((resolve) => old.once('spawn', resolve))
+    writeFileSync(DUMMY_PID_PATH, String(old.pid))
+    rmSync(DUMMY_PROTOCOL_PATH)
+    const exited = new Promise((resolve) => old.once('exit', (code, signal) => resolve(signal)))
+    const client = new DaemonClient()
+
+    await expect(client.request({ action: 'status' })).rejects.toMatchObject({
+      message: 'Wallet is locked: the wallet daemon was restarted for this CLI version.',
+      code: 'WALLET_LOCKED'
+    })
+    expect(await exited).toBe('SIGTERM')
+    expect(existsSync(DUMMY_PID_PATH)).toBe(false)
   })
 })

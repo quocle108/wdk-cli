@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
 const CORE_ENTRY = resolve(ROOT, 'src/daemon/core/wallet-daemon-core.js')
+const RPC_ENTRY = resolve(ROOT, 'src/daemon/rpc/serve.js')
 
 const FORBIDDEN = /^(node:|bare-|conf$|chalk$|commander$)/
 const SPECIFIER = /^\s*(?:import|export)\s+(?:[^'"]*?\sfrom\s+)?['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]\s*\)/gm
@@ -53,6 +54,13 @@ describe('daemon core portability', () => {
     const { files, forbidden } = walk(CORE_ENTRY)
 
     expect(files).toContain('src/services/wdk-service.js')
+    expect(forbidden).toEqual([])
+  })
+
+  it('serves the HRPC contract without anything runtime-specific', () => {
+    const { files, forbidden } = walk(RPC_ENTRY)
+
+    expect(files).toContain('src/daemon/rpc/spec/hrpc/index.js')
     expect(forbidden).toEqual([])
   })
 })

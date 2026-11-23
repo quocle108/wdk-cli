@@ -1,0 +1,722 @@
+{
+  "version": 1,
+  "schema": [
+    {
+      "name": "error",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 1,
+      "fields": [
+        {
+          "name": "message",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "suggestion",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "wallet-status",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "ttlMs",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "ttlRemaining",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "skipped-protocol",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "protocol",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "reason",
+          "required": true,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "method-arg",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "name",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "value",
+          "required": true,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "quote-token",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "address",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "decimals",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "symbol",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "isNative",
+          "required": false,
+          "type": "bool",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "quote-request",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 2,
+      "fields": [
+        {
+          "name": "fromToken",
+          "required": true,
+          "type": "@wdk-daemon/quote-token",
+          "version": 1
+        },
+        {
+          "name": "toToken",
+          "required": true,
+          "type": "@wdk-daemon/quote-token",
+          "version": 1
+        },
+        {
+          "name": "toChain",
+          "type": "json",
+          "version": 1
+        },
+        {
+          "name": "amountIn",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "amountOut",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "recipient",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "fromSymbol",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "toSymbol",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "toNetwork",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "empty",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": []
+    },
+    {
+      "name": "handshake-request",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "protocolVersion",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "unlock-wallet-request",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "wallet",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "passphrase",
+          "required": true,
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "ttl",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "lock-wallet-request",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "wallet",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "account-request",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "wallet",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "network",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "index",
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "amount",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "method",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "args",
+          "array": true,
+          "type": "@wdk-daemon/method-arg",
+          "version": 1
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "signature",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "hash",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "finality",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "timeout",
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "protocol",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "request",
+          "type": "@wdk-daemon/quote-request",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "handshake-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": -1,
+      "fields": [
+        {
+          "name": "protocolVersion",
+          "required": true,
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "daemonVersion",
+          "required": true,
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "wallet-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "wallet",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "address-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "address",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "balance-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "balance",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "symbol",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "decimals",
+          "type": "uint",
+          "version": 1
+        },
+        {
+          "name": "address",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "fee-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "fee",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "feeFormatted",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "from",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "send-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "txHash",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "network",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "from",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "amount",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "fee",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "call-method-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "result",
+          "type": "json",
+          "version": 1
+        },
+        {
+          "name": "address",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "sign-message-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "address",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "signature",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "verify-message-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "valid",
+          "type": "bool",
+          "version": 1
+        },
+        {
+          "name": "address",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "transaction-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "transaction",
+          "type": "json",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "quote-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "protocol",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "from",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "inputAmount",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "outputAmount",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "fees",
+          "type": "json",
+          "version": 1
+        },
+        {
+          "name": "skipped",
+          "array": true,
+          "type": "@wdk-daemon/skipped-protocol",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "execute-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "protocol",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "from",
+          "type": "string",
+          "version": 1
+        },
+        {
+          "name": "result",
+          "type": "json",
+          "version": 1
+        },
+        {
+          "name": "skipped",
+          "array": true,
+          "type": "@wdk-daemon/skipped-protocol",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "wallets-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "wallets",
+          "array": true,
+          "type": "@wdk-daemon/wallet-status",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "status-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "unlocked",
+          "type": "bool",
+          "version": 1
+        },
+        {
+          "name": "wallets",
+          "array": true,
+          "type": "@wdk-daemon/wallet-status",
+          "version": 1
+        },
+        {
+          "name": "pid",
+          "type": "uint",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "name": "message-response",
+      "namespace": "wdk-daemon",
+      "compact": false,
+      "flagsPosition": 0,
+      "fields": [
+        {
+          "name": "error",
+          "type": "@wdk-daemon/error",
+          "version": 1
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "version": 1
+        }
+      ]
+    }
+  ]
+}

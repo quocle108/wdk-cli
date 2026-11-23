@@ -14,7 +14,7 @@
 
 import { jest } from '@jest/globals'
 import { connect } from 'node:net'
-import { mkdtempSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, rmSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { encrypt } from '@tetherto/wdk-utils'
@@ -22,6 +22,7 @@ import { encrypt } from '@tetherto/wdk-utils'
 const tempDir = mkdtempSync(join(tmpdir(), 'wdk-daemon-test-'))
 const SOCKET_PATH = join(tempDir, 'daemon.sock')
 const PID_PATH = join(tempDir, 'daemon.pid')
+const PROTOCOL_PATH = join(tempDir, 'daemon.protocol')
 
 const PASSPHRASE = 'correct-horse-battery-staple'
 const SEED = 'cook voyage document eight skate token alien guide drink uncle term abuse'
@@ -44,6 +45,7 @@ jest.unstable_mockModule('../../../src/config/paths.js', () => ({
   ...paths,
   getDaemonSocketPath: () => SOCKET_PATH,
   getDaemonPidPath: () => PID_PATH,
+  getDaemonProtocolPath: () => PROTOCOL_PATH,
   getWalletPath: (name) => join(tempDir, 'wallets', name, 'seed.enc')
 }))
 
@@ -55,31 +57,46 @@ jest.unstable_mockModule('../../../src/services/wdk-service.js', () => ({
 }))
 
 const { WalletDaemon } = await import('../../../src/daemon/server.js')
-const { MAX_SESSION_TTL_MINUTES } = await import('../../../src/config/constants.js')
+const { MAX_SESSION_TTL_MINUTES, APP_VERSION, DAEMON_MAX_REQUEST_BYTES } = await import('../../../src/config/constants.js')
+const { default: HRPC } = await import('../../../src/daemon/rpc/spec/hrpc/index.js')
+const { getActionContract, toWireRequest, fromWireResponse } = await import('../../../src/daemon/rpc/wire.js')
+const { PROTOCOL_VERSION } = await import('../../../src/daemon/rpc/protocol-version.js')
 
 /** @type {WalletDaemon} */
 let daemon
 
 /**
  * Sends one request over the socket and resolves the daemon's reply, exactly
- * as `DaemonClient` does: one newline-delimited JSON object each way.
+ * as `DaemonClient` does: a handshake, then one HRPC call.
  *
  * @param {Record<string, unknown>} request - The request to send.
- * @returns {Promise<Record<string, unknown>>} The parsed reply.
+ * @returns {Promise<Record<string, any>>} The reply.
  */
-function send (request) {
+async function send (request) {
+  const socket = connect(SOCKET_PATH)
+  const rpc = new HRPC(socket)
+  try {
+    await rpc.handshake({ protocolVersion: PROTOCOL_VERSION })
+    const { method } = getActionContract(request.action)
+    return fromWireResponse(request.action, await rpc[method](toWireRequest(request)))
+  } finally {
+    socket.destroy()
+  }
+}
+
+/**
+ * Writes raw bytes to a fresh connection and resolves once the daemon closes it.
+ *
+ * @param {Buffer | string} bytes - What to send.
+ * @returns {Promise<void>} Settles when the connection is closed.
+ */
+function closedAfterWriting (bytes) {
   return new Promise((resolve, reject) => {
     const socket = connect(SOCKET_PATH)
-    let buffer = ''
-    socket.on('connect', () => socket.write(JSON.stringify(request) + '\n'))
-    socket.on('data', (chunk) => {
-      buffer += chunk.toString()
-      const newline = buffer.indexOf('\n')
-      if (newline === -1) return
-      socket.destroy()
-      resolve(JSON.parse(buffer.slice(0, newline)))
-    })
-    socket.on('error', reject)
+    socket.on('connect', () => socket.write(bytes))
+    socket.on('close', () => resolve())
+    socket.on('error', () => {})
+    setTimeout(() => reject(new Error('the daemon kept the connection open')), 2000)
   })
 }
 
@@ -98,6 +115,21 @@ describe('the daemon IPC endpoint', () => {
     expect(statSync(SOCKET_PATH).mode & 0o077).toBe(0)
   })
 
+  it('records the protocol it speaks in an owner-only file', () => {
+    expect(readFileSync(PROTOCOL_PATH, 'utf8')).toBe(String(PROTOCOL_VERSION))
+    expect(statSync(PROTOCOL_PATH).mode & 0o077).toBe(0)
+  })
+
+  it('answers the handshake with its protocol and version', async () => {
+    const socket = connect(SOCKET_PATH)
+    const rpc = new HRPC(socket)
+
+    const reply = await rpc.handshake({ protocolVersion: PROTOCOL_VERSION })
+    socket.destroy()
+
+    expect(reply).toEqual({ protocolVersion: PROTOCOL_VERSION, daemonVersion: APP_VERSION })
+  })
+
   it('answers status without an unlocked wallet', async () => {
     const reply = await send({ action: 'status' })
 
@@ -110,10 +142,12 @@ describe('the daemon IPC endpoint', () => {
     expect(reply).toEqual({ ok: true, data: { wallets: [] } })
   })
 
-  it('refuses an action it does not know', async () => {
-    const reply = await send({ action: 'drain_funds' })
+  it('drops a connection that does not speak the contract', async () => {
+    await expect(closedAfterWriting('not json\n')).resolves.toBeUndefined()
+  })
 
-    expect(reply.ok).toBe(false)
+  it('drops a connection that sends more than the request limit', async () => {
+    await expect(closedAfterWriting(Buffer.alloc(DAEMON_MAX_REQUEST_BYTES + 1))).resolves.toBeUndefined()
   })
 
   it('refuses a send that names no recipient', async () => {
@@ -149,16 +183,10 @@ describe('the daemon IPC endpoint', () => {
   it('refuses an unlock_wallet whose ttl it could not honour', async () => {
     writeWallet('ttl')
 
-    const replies = await Promise.all(
-      [-1, 1.5, MAX_SESSION_TTL_MINUTES + 1, '5'].map((ttl) =>
-        send({ action: 'unlock_wallet', wallet: 'ttl', passphrase: PASSPHRASE, ttl })
-      )
-    )
+    const reply = await send({ action: 'unlock_wallet', wallet: 'ttl', passphrase: PASSPHRASE, ttl: MAX_SESSION_TTL_MINUTES + 1 })
 
-    for (const reply of replies) {
-      expect(reply.ok).toBe(false)
-      expect(reply.error).toContain(`from 0 to ${MAX_SESSION_TTL_MINUTES}`)
-    }
+    expect(reply.ok).toBe(false)
+    expect(reply.error).toContain(`from 0 to ${MAX_SESSION_TTL_MINUTES}`)
   })
 
   it('opens a session for the right passphrase', async () => {
@@ -221,22 +249,5 @@ describe('the daemon IPC endpoint', () => {
     const { wallets } = (await send({ action: 'status' })).data
 
     expect(wallets.find((w) => w.name === 'extend').ttlMs).toBe(120_000)
-  })
-
-  it('rejects a line that is not JSON instead of closing the connection', async () => {
-    const reply = await new Promise((resolve, reject) => {
-      const socket = connect(SOCKET_PATH)
-      let buffer = ''
-      socket.on('connect', () => socket.write('not json\n'))
-      socket.on('data', (chunk) => {
-        buffer += chunk.toString()
-        if (!buffer.includes('\n')) return
-        socket.destroy()
-        resolve(JSON.parse(buffer.slice(0, buffer.indexOf('\n'))))
-      })
-      socket.on('error', reject)
-    })
-
-    expect(reply.ok).toBe(false)
   })
 })
